@@ -189,12 +189,12 @@ async function sendReport(ctx: CommandContext<Context>, period: 'day' | 'week' |
     { id: user.id, timezone: user.timezone, baseCurrency: user.baseCurrency, weekStart: user.weekStart },
     period,
   )
-  await ctx.reply(report(summary, user.timezone, config.APP_URL), {
+  const panel = panelReply(user.id)
+  await ctx.reply(report(summary, user.timezone, config.APP_URL) + panel.extraText, {
     parse_mode: 'HTML',
-    reply_markup: panelKeyboard(user.id),
+    reply_markup: panel.keyboard,
     link_preview_options: { is_disabled: true },
   })
-
 }
 
 bot.command(['today', 'сегодня'], (ctx) => sendReport(ctx, 'day'))
@@ -353,6 +353,9 @@ bot.command('demo', async (ctx) => {
   }
 
   const added = seedDemo(user)
+  // Одна ссылка на ответ: issueLoginToken гасит предыдущий токен, поэтому
+  // два вызова подряд оставили бы в тексте мёртвую ссылку.
+  const panel = panelReply(user.id)
   await ctx.reply(
     [
       `Добавил ${added} ${plural(added, ['трату', 'траты', 'трат'])} за последние полтора месяца.`,
@@ -360,8 +363,8 @@ bot.command('demo', async (ctx) => {
       '',
       'Посмотрите /month, а потом откройте панель.',
       'Убрать примеры одной командой: /demo_clear',
-    ].join('\n') + panelReply(user.id).extraText,
-    { reply_markup: panelKeyboard(user.id), link_preview_options: { is_disabled: true } },
+    ].join('\n') + panel.extraText,
+    { reply_markup: panel.keyboard, link_preview_options: { is_disabled: true } },
   )
 })
 
