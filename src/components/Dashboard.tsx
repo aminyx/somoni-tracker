@@ -83,23 +83,31 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
   const [loading, setLoading] = useState(false)
   const [undo, setUndo] = useState<{ id: string; label: string } | null>(null)
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Номер запроса. Пользователь может быстро нажать «Д», потом «М» — ответ
+  // на первый запрос придёт позже и затёр бы данные второго.
+  const requestId = useRef(0)
 
   const load = useCallback(
     async (nextPeriod: Period, nextAt: number, day?: string | null) => {
+      const id = ++requestId.current
       setLoading(true)
       try {
         const params = new URLSearchParams({ period: nextPeriod })
         if (day) params.set('day', day)
         else params.set('at', String(nextAt))
         const response = await fetch(`/api/summary?${params}`, { cache: 'no-store' })
+        // Пока ждали, пользователь мог переключить период — этот ответ устарел.
+        if (id !== requestId.current) return
         if (response.status === 401) {
           window.location.href = '/'
           return
         }
         if (!response.ok) return
-        setData((await response.json()) as DashboardData)
+        const payload = (await response.json()) as DashboardData
+        if (id !== requestId.current) return
+        setData(payload)
       } finally {
-        setLoading(false)
+        if (id === requestId.current) setLoading(false)
       }
     },
     [],
@@ -186,7 +194,27 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
     if (!selectedDay) return null
     const rows = data.expenses.filter((e) => dayKey(e.spentAt, user.timezone) === selectedDay)
     const total = rows.reduce((acc, e) => acc + e.baseMinor, 0)
-    return { rows, total }
+
+    // Разбивка по категориям тоже обязана пересчитаться. Иначе на экране
+    // рядом стоят «230 смн за день» и категории за весь месяц — и цифры
+    // перестают сходиться на глазах у читателя.
+    const byCategory = new Map<string, { totalMinor: number; count: number }>()
+    for (const row of rows) {
+      const entry = byCategory.get(row.category) ?? { totalMinor: 0, count: 0 }
+      entry.totalMinor += row.baseMinor
+      entry.count += 1
+      byCategory.set(row.category, entry)
+    }
+    const categories = [...byCategory.entries()]
+      .map(([category, value]) => ({
+        category,
+        totalMinor: value.totalMinor,
+        count: value.count,
+        share: total ? (value.totalMinor / total) * 100 : 0,
+      }))
+      .sort((a, b) => b.totalMinor - a.totalMinor)
+
+    return { rows, total, categories }
   }, [selectedDay, data.expenses, user.timezone])
 
   const heroTotal = dayScoped ? dayScoped.total : summary.totalMinor
@@ -314,8 +342,8 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
           ) : null}
 
           <CategoryBlock
-            categories={summary.byCategory}
-            totalCount={summary.count}
+            categories={dayScoped ? dayScoped.categories : summary.byCategory}
+            totalCount={dayScoped ? dayScoped.rows.length : summary.count}
             currency={user.baseCurrency}
             expanded={expandedCategories}
             onToggle={() => setExpandedCategories((v) => !v)}

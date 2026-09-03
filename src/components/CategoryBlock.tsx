@@ -89,8 +89,11 @@ export function CategoryBlock({
                   }
                   aria-hidden
                 />
+                {/* min-w-0 + truncate, а не shrink-0: на экране 320 px
+                    «Связь и интернет» иначе выдавливает колонку процентов
+                    за край. Лучше подрезать название, чем потерять число. */}
                 <span
-                  className="shrink-0 text-[15px] text-[var(--text-1)]"
+                  className="min-w-0 truncate text-[15px] text-[var(--text-1)]"
                   style={{ opacity: selected && !isSelected ? 0.5 : 1 }}
                 >
                   {category.name}
@@ -99,10 +102,10 @@ export function CategoryBlock({
                     Устройство из бумажного чека, и оно делает реальную работу
                     на узком экране. */}
                 <span className="leader" aria-hidden />
-                <span className="num w-[92px] shrink-0 text-right text-[15px] text-[var(--text-1)]">
+                <span className="num w-[88px] shrink-0 text-right text-[15px] text-[var(--text-1)]">
                   {formatMoney(row.totalMinor, currency)}
                 </span>
-                <span className="num w-[38px] shrink-0 text-right text-[13px] text-[var(--text-3)]">
+                <span className="num w-[36px] shrink-0 text-right text-[13px] text-[var(--text-3)]">
                   {Math.round(row.share)}%
                 </span>
               </button>
