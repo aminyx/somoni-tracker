@@ -4,14 +4,21 @@ import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import * as schema from './schema'
 
+type Client = ReturnType<typeof create>
+
 /**
- * Единственный экземпляр подключения на процесс.
- * В dev-режиме Next перезагружает модули — держим клиент на globalThis,
- * иначе на каждый hot-reload открывается новый файловый дескриптор.
+ * Подключение создаётся при первом обращении, а не при импорте модуля.
+ *
+ * Это не оптимизация, а требование сборки: Next во время `next build`
+ * загружает модули маршрутов, чтобы собрать метаданные. Если бы файл базы
+ * открывался на импорте, сборка зависела бы от наличия и прав каталога
+ * data/ — а в образе его на этом шаге ещё нет.
+ *
+ * В режиме разработки клиент живёт на globalThis: Next перезагружает модули
+ * при каждой правке, и без этого на каждый hot-reload открывался бы новый
+ * файловый дескриптор.
  */
-const globalForDb = globalThis as unknown as {
-  __trackerDb?: ReturnType<typeof create>
-}
+const globalForDb = globalThis as unknown as { __trackerDb?: Client }
 
 function create() {
   // Путь берётся из окружения, статически его не проследить —
@@ -30,8 +37,24 @@ function create() {
   return drizzle(sqlite, { schema })
 }
 
-export const db = globalForDb.__trackerDb ?? create()
-if (process.env.NODE_ENV !== 'production') globalForDb.__trackerDb = db
+function client(): Client {
+  if (!globalForDb.__trackerDb) globalForDb.__trackerDb = create()
+  return globalForDb.__trackerDb
+}
+
+/**
+ * Клиент базы. Обёртка нужна, чтобы `db.select()` работал как обычно,
+ * но само подключение появлялось только в момент первого запроса.
+ */
+export const db = new Proxy({} as Client, {
+  get(_target, property, receiver) {
+    const value = Reflect.get(client(), property, receiver)
+    return typeof value === 'function' ? value.bind(client()) : value
+  },
+  has(_target, property) {
+    return Reflect.has(client(), property)
+  },
+})
 
 export { schema }
 export * from './schema'
