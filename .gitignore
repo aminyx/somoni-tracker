@@ -22,6 +22,7 @@ build/
 
 # данные
 data/
+models/
 *.db
 *.db-shm
 *.db-wal

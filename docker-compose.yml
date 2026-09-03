@@ -35,6 +35,9 @@ services:
       DATABASE_PATH: /app/data/tracker.db
     volumes:
       - ./data:/app/data
+      # Модели распознавания чеков: без этого тома они скачиваются заново
+      # при каждой пересборке образа.
+      - ./models:/home/node/.cache
     restart: unless-stopped
     # Долгий опрос Telegram: входящие порты не нужны вовсе.
     depends_on:

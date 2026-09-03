@@ -35,7 +35,8 @@ import {
   setTimezone,
   updateExpense,
 } from '../lib/expenses'
-import { formatMoney, isValidCurrency } from '../lib/money'
+import { formatMoney, fromMinor, isValidCurrency, toMinor } from '../lib/money'
+import { isOcrEnabled, recognizeReceipt, warmupOcr } from '../lib/ocr'
 import { explainFailure, parseExpense, splitEntries } from '../lib/parser'
 import { refreshRates } from '../lib/rates'
 import { expensesInRange, recentExpenses, summarize, totalFor } from '../lib/stats'
@@ -482,6 +483,146 @@ bot.on('edited_message:text', async (ctx) => {
   )
 })
 
+
+/* ------------------------------------------------------------------ */
+/*  Чек с фотографии                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Подписи к фотографиям чеков: подпись — это описание будущей траты.
+ * Живут в памяти и недолго; после перезапуска бота описание станет «Чек»,
+ * и это не беда — сумму человек всё равно подтверждает касанием.
+ */
+const receiptCaptions = new Map<string, { text: string; at: number }>()
+
+function rememberCaption(key: string, text: string): void {
+  const now = Date.now()
+  for (const [id, value] of receiptCaptions) {
+    if (now - value.at > 30 * 60 * 1000) receiptCaptions.delete(id)
+  }
+  if (text) receiptCaptions.set(key, { text, at: now })
+}
+
+bot.on('message:photo', async (ctx) => {
+  const user = currentUser(ctx)
+  if (!user) return
+
+  if (!isOcrEnabled()) {
+    await ctx.reply('Распознавание чеков выключено. Напишите трату текстом: «продукты 350».')
+    return
+  }
+
+  const notice = await ctx.reply('Читаю чек…')
+
+  try {
+    // Берём самый крупный вариант: мелкий эскиз распознаётся заметно хуже.
+    const photo = ctx.message.photo[ctx.message.photo.length - 1]!
+    const file = await ctx.api.getFile(photo.file_id)
+    if (!file.file_path) throw new Error('Telegram не отдал файл')
+
+    const url = `https://api.telegram.org/file/bot${TOKEN}/${file.file_path}`
+    const response = await fetch(url)
+    if (!response.ok) throw new Error(`не удалось скачать фото: HTTP ${response.status}`)
+    const image = Buffer.from(await response.arrayBuffer())
+
+    const result = await recognizeReceipt(image)
+
+    if (result.candidates.length === 0) {
+      await ctx.api.editMessageText(
+        ctx.chat.id,
+        notice.message_id,
+        'Сумму на чеке разобрать не вышло. Напишите её текстом: «продукты 350».',
+      )
+      return
+    }
+
+    const caption = (ctx.message.caption ?? '').trim()
+    const keyboard = new InlineKeyboard()
+    for (const candidate of result.candidates) {
+      keyboard
+        .text(
+          formatMoney(toMinor(candidate.amount, user.baseCurrency), user.baseCurrency),
+          `ocr:${toMinor(candidate.amount, user.baseCurrency)}`,
+        )
+        .row()
+    }
+
+    rememberCaption(String(notice.message_id), caption)
+
+    const lines = [
+      'Нашёл на чеке. Какая сумма — трата?',
+      '',
+      ...result.candidates.map((c) => `• <b>${formatMoney(toMinor(c.amount, user.baseCurrency), user.baseCurrency)}</b> — <i>${esc(c.line.slice(0, 60))}</i>`),
+      '',
+      'Если ни одна не подходит — просто напишите сумму текстом.',
+    ]
+
+    await ctx.api.editMessageText(ctx.chat.id, notice.message_id, lines.join('\n'), {
+      parse_mode: 'HTML',
+      reply_markup: keyboard,
+    })
+  } catch (error) {
+    console.warn('[чек]', (error as Error).message)
+    await ctx.api
+      .editMessageText(
+        ctx.chat.id,
+        notice.message_id,
+        'Не получилось прочитать чек. Напишите трату текстом: «продукты 350».',
+      )
+      .catch(() => undefined)
+  }
+})
+
+bot.callbackQuery(/^ocr:(\d+)$/, async (ctx) => {
+  const user = currentUser(ctx)
+  if (!user) return
+
+  const minor = Number(ctx.match[1])
+  if (!Number.isFinite(minor) || minor <= 0) {
+    await ctx.answerCallbackQuery({ text: 'Странная сумма' })
+    return
+  }
+
+  const remembered = ctx.callbackQuery.message
+    ? receiptCaptions.get(String(ctx.callbackQuery.message.message_id))
+    : undefined
+  const description = remembered?.text || 'Чек'
+
+  const parsed = parseExpense(
+    `${description} ${fromMinor(minor, user.baseCurrency)}`.trim(),
+    user.baseCurrency,
+  )
+  if (!parsed.ok) {
+    await ctx.answerCallbackQuery({ text: 'Не удалось сохранить' })
+    return
+  }
+
+  const saved = addExpense(user, parsed.value, {
+    source: 'ocr',
+    chatId: ctx.chat?.id ?? null,
+  })
+  const totals = todayTotals(user)
+
+  await ctx.editMessageText(
+    expenseCard(
+      saved.expense,
+      user.timezone,
+      totals.totalMinor,
+      totals.count,
+      user.baseCurrency,
+      'Сумма с чека. Категорию можно поправить кнопкой.',
+    ),
+    { parse_mode: 'HTML', reply_markup: expenseKeyboard(saved.expense, saved.classification.suggestions) },
+  )
+  if (ctx.callbackQuery.message) {
+    linkExpenseMessage(user.id, saved.expense.id, ctx.chat?.id ?? null, ctx.callbackQuery.message.message_id)
+  }
+  if (saved.limitWarning) {
+    await ctx.reply(limitMessage(saved.limitWarning), { parse_mode: 'HTML' })
+  }
+  await ctx.answerCallbackQuery({ text: 'Записал' })
+})
+
 /* ------------------------------------------------------------------ */
 /*  Кнопки                                                             */
 /* ------------------------------------------------------------------ */
@@ -613,6 +754,12 @@ async function main() {
     { command: 'demo', description: 'Заполнить примерами' },
     { command: 'help', description: 'Как пользоваться' },
   ])
+
+  // Модель распознавания греем в фоне: первый пользователь не должен
+  // ждать, пока скачаются файлы модели.
+  void warmupOcr().then((ready) => {
+    if (ready) console.log('[бот] распознавание чеков готово')
+  })
 
   // Курсы и уборка протухших сессий — раз в час, без отдельного планировщика.
   const housekeeping = setInterval(
