@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { Dashboard, type DashboardData } from '@/components/Dashboard'
+import { TelegramBridge } from '@/components/TelegramBridge'
 import { currentUser } from '@/lib/session'
 import { expensesInRange, summarize } from '@/lib/stats'
 import { rangeFor } from '@/lib/time'
@@ -41,5 +42,10 @@ export default async function AppPage() {
     now,
   }
 
-  return <Dashboard initial={initial} />
+  return (
+    <>
+      <TelegramBridge authenticated />
+      <Dashboard initial={initial} />
+    </>
+  )
 }

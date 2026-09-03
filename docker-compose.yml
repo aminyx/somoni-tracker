@@ -1,0 +1,41 @@
+# Два процесса из одного образа: панель смотрит наружу, бот — нет.
+# База — общий файл на диске хоста, поэтому оба контейнера обязаны
+# жить на одной машине.
+
+services:
+  web:
+    build: .
+    image: somoni-tracker
+    # Миграции перед стартом: контейнер можно поднимать на пустом томе.
+    command: sh -c "npm run db:migrate && npm run start"
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_PATH: /app/data/tracker.db
+    # Только на петлю: наружу смотрит обратный прокси хоста, порт не открывается.
+    ports:
+      - '127.0.0.1:3000:3000'
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  bot:
+    build: .
+    image: somoni-tracker
+    command: npm run bot
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_PATH: /app/data/tracker.db
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    # Долгий опрос Telegram: входящие порты не нужны вовсе.
+    depends_on:
+      - web

@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next'
+import Script from 'next/script'
 import { JetBrains_Mono, Onest } from 'next/font/google'
 import './globals.css'
 
@@ -44,7 +45,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // объявлен на html, и пустая переменная сделала бы всё объявление
     // недействительным — страница уехала бы в Times New Roman.
     <html lang="ru" className={`${onest.variable} ${mono.variable}`} suppressHydrationWarning>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        {/* Скрипт Telegram нужен, только когда панель открыта как Mini App.
+            beforeInteractive: объект WebApp должен существовать до того,
+            как мост попробует развернуть окно. */}
+        <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
+        {children}
+      </body>
     </html>
   )
 }

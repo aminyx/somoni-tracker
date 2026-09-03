@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { env } from '@/lib/env'
+import { TelegramBridge } from '@/components/TelegramBridge'
 import { currentUser } from '@/lib/session'
 
 export const dynamic = 'force-dynamic'
@@ -14,6 +15,7 @@ export default async function HomePage() {
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-4 py-10">
+      <TelegramBridge authenticated={false} />
       <div className="num mb-8 text-[40px] leading-none text-[var(--text-3)]">смн</div>
 
       <h1 className="mb-3 text-[26px] font-semibold leading-tight text-[var(--text-1)]">

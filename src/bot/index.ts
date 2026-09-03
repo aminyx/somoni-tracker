@@ -17,6 +17,7 @@ import { runMigrations } from '../../scripts/migrate'
 import { pruneExpired, issueLoginToken } from '../lib/auth'
 import { CATEGORIES, categoryBySlug, isCategorySlug } from '../lib/categories'
 import { csvFilename, expensesToCsv } from '../lib/csv'
+import { clearDemo, hasDemo, seedDemo } from '../lib/demo'
 import type { User } from '../lib/db/schema'
 import { env } from '../lib/env'
 import {
@@ -287,6 +288,46 @@ bot.command('export', async (ctx) => {
   await ctx.replyWithDocument(
     new InputFile(Buffer.from(csv, 'utf8'), csvFilename('траты', now, user.timezone)),
     { caption: `${rows.length} ${plural(rows.length, ['трата', 'траты', 'трат'])} за текущий месяц.` },
+  )
+})
+
+/**
+ * Заполняет аккаунт примерами. Нужно для первого знакомства: панель у нового
+ * человека пуста, а чужие траты показать нельзя — данные не смешиваются.
+ */
+bot.command('demo', async (ctx) => {
+  const user = currentUser(ctx)
+  if (!user) return
+
+  if (hasDemo(user.id)) {
+    await ctx.reply(
+      'Примеры уже добавлены. Убрать их — /demo_clear.',
+      { reply_markup: panelKeyboard(user.id) },
+    )
+    return
+  }
+
+  const added = seedDemo(user)
+  await ctx.reply(
+    [
+      `Добавил ${added} ${plural(added, ['трату', 'траты', 'трат'])} за последние полтора месяца.`,
+      'Это ваши собственные записи — их видно только вам.',
+      '',
+      'Посмотрите /month, а потом откройте панель.',
+      'Убрать примеры одной командой: /demo_clear',
+    ].join('\n'),
+    { reply_markup: panelKeyboard(user.id), link_preview_options: { is_disabled: true } },
+  )
+})
+
+bot.command('demo_clear', async (ctx) => {
+  const user = currentUser(ctx)
+  if (!user) return
+  const removed = clearDemo(user.id)
+  await ctx.reply(
+    removed > 0
+      ? `Убрал ${removed} ${plural(removed, ['пример', 'примера', 'примеров'])}. Ваши настоящие траты не тронуты.`
+      : 'Примеров не было.',
   )
 })
 
@@ -569,6 +610,7 @@ async function main() {
     { command: 'limit', description: 'Лимит по категории' },
     { command: 'export', description: 'Выгрузить CSV' },
     { command: 'settings', description: 'Часовой пояс и валюта' },
+    { command: 'demo', description: 'Заполнить примерами' },
     { command: 'help', description: 'Как пользоваться' },
   ])
 
