@@ -90,8 +90,47 @@ function panelLink(userId: number): string {
   return `${config.APP_URL.replace(/\/$/, '')}/enter?t=${token}`
 }
 
-function panelKeyboard(userId: number): InlineKeyboard {
+/**
+ * Годится ли адрес для URL-кнопки.
+ *
+ * Telegram отклоняет кнопки со ссылкой на localhost: «Bad Request: inline
+ * keyboard button URL is invalid: Wrong HTTP URL». Причём отклоняет всё
+ * сообщение целиком — при локальном запуске пользователь на /start и /panel
+ * не получал вообще ничего. Поэтому при непубличном адресе ссылка уходит
+ * обычным текстом: она всё равно кликабельна.
+ */
+function canUseUrlButton(): boolean {
+  try {
+    const url = new URL(config.APP_URL)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false
+    const host = url.hostname.toLowerCase()
+    if (host === 'localhost' || host.endsWith('.localhost')) return false
+    if (host === '127.0.0.1' || host === '0.0.0.0' || host === '::1' || host === '[::1]') return false
+    // Telegram требует домен, а не голый адрес в локальной сети.
+    if (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)) return false
+    return host.includes('.')
+  } catch {
+    return false
+  }
+}
+
+/** Кнопка «Открыть панель», если адрес публичный. Иначе кнопки нет. */
+function panelKeyboard(userId: number): InlineKeyboard | undefined {
+  if (!canUseUrlButton()) return undefined
   return new InlineKeyboard().url('Открыть панель', panelLink(userId))
+}
+
+/**
+ * Готовые параметры ответа со ссылкой на панель: кнопкой либо текстом.
+ * Возвращает и добавку к тексту сообщения, чтобы ссылка не потерялась.
+ */
+function panelReply(userId: number): { extraText: string; keyboard: InlineKeyboard | undefined } {
+  const keyboard = panelKeyboard(userId)
+  if (keyboard) return { extraText: '', keyboard }
+  return {
+    extraText: `\n\nПанель: ${panelLink(userId)}\nСсылка действует 10 минут и открывается один раз.`,
+    keyboard: undefined,
+  }
 }
 
 /** Итог за сегодня — печатается под каждой сохранённой тратой. */
@@ -109,6 +148,7 @@ bot.command('start', async (ctx) => {
   if (!user) return
 
   const name = user.firstName ? `, ${esc(user.firstName)}` : ''
+  const panel = panelReply(user.id)
   await ctx.reply(
     [
       `Привет${name}. Я записываю траты.`,
@@ -117,11 +157,11 @@ bot.command('start', async (ctx) => {
       'Сумму и категорию разберу сам.',
       '',
       'Итоги — командами /today, /week, /month.',
-      'Графики по дням и категориям — в панели, вход по кнопке ниже, без пароля.',
-    ].join('\n'),
+      'Графики по дням и категориям — в панели, вход через того же бота, без пароля.',
+    ].join('\n') + panel.extraText,
     {
       parse_mode: 'HTML',
-      reply_markup: panelKeyboard(user.id),
+      reply_markup: panel.keyboard,
       link_preview_options: { is_disabled: true },
     },
   )
@@ -134,9 +174,11 @@ bot.command('help', async (ctx) => {
 bot.command('panel', async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
+  const panel = panelReply(user.id)
   await ctx.reply(
-    'Ссылка действует 10 минут и открывается один раз — так её нельзя переслать и войти чужим.',
-    { reply_markup: panelKeyboard(user.id), link_preview_options: { is_disabled: true } },
+    'Ссылка действует 10 минут и открывается один раз — так её нельзя переслать и войти чужим.' +
+      panel.extraText,
+    { reply_markup: panel.keyboard, link_preview_options: { is_disabled: true } },
   )
 })
 
@@ -152,6 +194,7 @@ async function sendReport(ctx: CommandContext<Context>, period: 'day' | 'week' |
     reply_markup: panelKeyboard(user.id),
     link_preview_options: { is_disabled: true },
   })
+
 }
 
 bot.command(['today', 'сегодня'], (ctx) => sendReport(ctx, 'day'))
@@ -301,10 +344,11 @@ bot.command('demo', async (ctx) => {
   if (!user) return
 
   if (hasDemo(user.id)) {
-    await ctx.reply(
-      'Примеры уже добавлены. Убрать их — /demo_clear.',
-      { reply_markup: panelKeyboard(user.id) },
-    )
+    const panel = panelReply(user.id)
+    await ctx.reply('Примеры уже добавлены. Убрать их — /demo_clear.' + panel.extraText, {
+      reply_markup: panel.keyboard,
+      link_preview_options: { is_disabled: true },
+    })
     return
   }
 
@@ -316,7 +360,7 @@ bot.command('demo', async (ctx) => {
       '',
       'Посмотрите /month, а потом откройте панель.',
       'Убрать примеры одной командой: /demo_clear',
-    ].join('\n'),
+    ].join('\n') + panelReply(user.id).extraText,
     { reply_markup: panelKeyboard(user.id), link_preview_options: { is_disabled: true } },
   )
 })
