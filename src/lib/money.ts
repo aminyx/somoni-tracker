@@ -21,7 +21,7 @@ export const CURRENCIES: Record<string, CurrencyInfo> = {
     exponent: 2,
     symbol: 'смн',
     name: 'сомони',
-    aliases: ['сомони', 'смн', 'somoni', 'tjs', 'сом.', 'с.'],
+    aliases: ['сомони', 'смн', 'somoni', 'tjs', 'сомонӣ'],
   },
   USD: {
     code: 'USD',
@@ -42,7 +42,7 @@ export const CURRENCIES: Record<string, CurrencyInfo> = {
     exponent: 2,
     symbol: '₽',
     name: 'рублей',
-    aliases: ['₽', 'rub', 'руб', 'рубль', 'рублей', 'рубля', 'р.'],
+    aliases: ['₽', 'rub', 'рубль', 'рублей', 'рубля'],
   },
   UZS: {
     code: 'UZS',
@@ -90,20 +90,53 @@ export const CURRENCIES: Record<string, CurrencyInfo> = {
 
 export const DEFAULT_CURRENCY = 'TJS'
 
+/**
+ * Действующие коды ISO 4217. Нужны, чтобы принимать любую валюту
+ * («обед 45 gbp», «такси 300 pkr»), но не считать валютой случайное
+ * трёхбуквенное слово вроде «gym» или «for».
+ */
+export const ISO_4217 = new Set<string>(
+  (
+    'AED AFN ALL AMD ANG AOA ARS AUD AWG AZN BAM BBD BDT BGN BHD BIF BMD BND BOB BRL BSD BTN ' +
+    'BWP BYN BZD CAD CDF CHF CLP CNY COP CRC CUP CVE CZK DJF DKK DOP DZD EGP ERN ETB EUR FJD ' +
+    'FKP GBP GEL GHS GIP GMD GNF GTQ GYD HKD HNL HRK HTG HUF IDR ILS INR IQD IRR ISK JMD JOD ' +
+    'JPY KES KGS KHR KMF KPW KRW KWD KYD KZT LAK LBP LKR LRD LSL LYD MAD MDL MGA MKD MMK MNT ' +
+    'MOP MRU MUR MVR MWK MXN MYR MZN NAD NGN NIO NOK NPR NZD OMR PAB PEN PGK PHP PKR PLN PYG ' +
+    'QAR RON RSD RUB RWF SAR SBD SCR SDG SEK SGD SHP SLE SOS SRD SSP STN SVC SYP SZL THB TJS ' +
+    'TMT TND TOP TRY TTD TWD TZS UAH UGX USD UYU UZS VES VND VUV WST XAF XCD XOF XPF YER ZAR ' +
+    'ZMW ZWG'
+  ).split(' '),
+)
+
+/** Валюты без дробной части — у них 0 знаков после запятой. */
+const ZERO_DECIMAL = new Set([
+  'BIF', 'CLP', 'DJF', 'GNF', 'ISK', 'JPY', 'KMF', 'KRW', 'PYG', 'RWF',
+  'UGX', 'UYI', 'VND', 'VUV', 'XAF', 'XOF', 'XPF',
+])
+/** Валюты с тремя знаками. */
+const THREE_DECIMAL = new Set(['BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND'])
+
 export function currencyInfo(code: string): CurrencyInfo {
-  return (
-    CURRENCIES[code.toUpperCase()] ?? {
-      code: code.toUpperCase(),
-      exponent: 2,
-      symbol: code.toUpperCase(),
-      name: code.toUpperCase(),
-      aliases: [],
-    }
-  )
+  const upper = code.toUpperCase()
+  const known = CURRENCIES[upper]
+  if (known) return known
+  return {
+    code: upper,
+    exponent: ZERO_DECIMAL.has(upper) ? 0 : THREE_DECIMAL.has(upper) ? 3 : 2,
+    symbol: upper,
+    name: upper,
+    aliases: [],
+  }
 }
 
+/** Валюта из нашего справочника — для неё есть символ и склонение. */
 export function isKnownCurrency(code: string): boolean {
   return Object.hasOwn(CURRENCIES, code.toUpperCase())
+}
+
+/** Валюта вообще существует по ISO 4217. */
+export function isValidCurrency(code: string): boolean {
+  return ISO_4217.has(code.toUpperCase())
 }
 
 /** Множитель минорных единиц: 100 для двух знаков. */

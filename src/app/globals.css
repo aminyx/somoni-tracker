@@ -1,0 +1,247 @@
+@import 'tailwindcss';
+
+/* ============================================================
+   «Ночная касса» — тёмная лента чека.
+   Тёплый чёрный вместо синего, волосяные линии вместо карточек,
+   моноширинные цифры в правой колонке, отточия между названием
+   и суммой, один кислотный акцент как штамп.
+   ============================================================ */
+
+:root {
+  color-scheme: dark;
+
+  /* фон: тёплый нейтральный, никогда не #000 — на чистом чёрном
+     не видно ступеней высоты и появляется ореол вокруг текста */
+  --bg: #0d0d0c;
+  --surface: #151513;
+  --surface-2: #1d1d1a;
+  --border: #2a2a26;
+  --border-strong: #3a3a34;
+  --grid: #232320;
+  --bar: #3e3e38;
+
+  --text-1: #f2f0ea;
+  --text-2: #a5a29a;
+  --text-3: #85827a;
+
+  --accent: #d9f24a;
+  --accent-ink: #d9f24a;
+  --on-accent: #0d0d0c;
+  --pos: #5fd68a;
+  --neg: #ff6b5a;
+  --pos-bg: rgb(95 214 138 / 0.14);
+  --neg-bg: rgb(255 107 90 / 0.14);
+
+  /* цвет закреплён за категорией, а не за её местом в рейтинге:
+     категория не должна менять цвет, переехав со второй строки на третью */
+  --cat-1: #d9f24a;
+  --cat-2: #7fd1ff;
+  --cat-3: #ffb35c;
+  --cat-4: #c9a7ff;
+  --cat-5: #5fd68a;
+  --cat-6: #ff8fa3;
+  --cat-7: #63e0d0;
+  --cat-8: #b9b3a6;
+
+  --s-1: 2px;  --s-2: 4px;  --s-3: 8px;  --s-4: 12px; --s-5: 16px;
+  --s-6: 20px; --s-7: 24px; --s-8: 32px; --s-9: 40px; --s-10: 56px;
+
+  --r-bar: 3px;
+  --r-sm: 6px;
+  --r-lg: 18px;
+  --r-full: 999px;
+
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --t-fast: 160ms;
+  --t-base: 220ms;
+  --t-slow: 300ms;
+
+  --gutter: 16px;
+}
+
+/* Светлая тема — та же вёрстка, инвертированная, а не другой дизайн.
+   Кислотный акцент в светлой теме остаётся заливкой: как текст на белом
+   он даёт 1,4:1 и нечитаем. */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #fbfaf7;
+  --surface: #ffffff;
+  --surface-2: #f2f0ea;
+  --border: #e4e1d8;
+  --border-strong: #cfcbbf;
+  --grid: #ebe8e0;
+  --bar: #c8c4b8;
+
+  --text-1: #14140f;
+  --text-2: #5c594f;
+  --text-3: #6e6b61;
+
+  --accent: #d9f24a;
+  --accent-ink: #5e7a00;
+  --on-accent: #14140f;
+  --pos: #0f7a43;
+  --neg: #c1361f;
+  --pos-bg: rgb(15 122 67 / 0.12);
+  --neg-bg: rgb(193 54 31 / 0.12);
+
+  --cat-1: #6e8c00;
+  --cat-2: #0f6fa8;
+  --cat-3: #b2650a;
+  --cat-4: #7a4fd1;
+  --cat-5: #0f7a43;
+  --cat-6: #c0405e;
+  --cat-7: #0e7a72;
+  --cat-8: #6e6b60;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-grid: var(--grid);
+  --color-bar: var(--bar);
+  --color-text-1: var(--text-1);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-pos: var(--pos);
+  --color-neg: var(--neg);
+  --font-sans: var(--font-onest), 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: var(--font-jetbrains), 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+  --radius-bar: var(--r-bar);
+  --radius-sm: var(--r-sm);
+  --radius-lg: var(--r-lg);
+  --ease-out-quint: var(--ease);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  font-family: var(--font-onest), system-ui, sans-serif;
+  /* tnum — табличные цифры, zero — перечёркнутый ноль:
+     в кириллице «0» и «О» путаются */
+  font-feature-settings: 'tnum' 1, 'zero' 1, 'case' 1;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text-1);
+  margin: 0;
+  min-height: 100dvh;
+  /* горизонтального скролла у страницы быть не должно никогда */
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
+}
+
+/* Денежная колонка. Моноширинный шрифт даёт табличность
+   по построению: колонка не дёргается при смене значений. */
+.num {
+  font-family: var(--font-jetbrains), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: -0.01em;
+}
+
+.eyebrow {
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* Отточие между названием категории и суммой.
+   Устройство из бумажного чека: ведёт глаз через 150 px пустоты. */
+.leader {
+  flex: 1 1 auto;
+  min-width: var(--s-3);
+  align-self: center;
+  border-bottom: 1px dotted var(--border);
+  transform: translateY(-4px);
+}
+
+.hairline {
+  border-bottom: 1px solid var(--border);
+}
+
+/* Секции идут в край, разделяются волосяной линией с отступом слева:
+   это визуально сшивает строки в одну колонку, как на ленте чека. */
+.row-rule + .row-rule {
+  border-top: 1px solid var(--border);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+.skeleton {
+  background: var(--surface-2);
+  animation: skeleton-pulse 1600ms ease-in-out infinite;
+}
+
+@keyframes bar-grow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+.bar-grow {
+  transform-origin: bottom;
+  animation: bar-grow 260ms var(--ease) both;
+}
+
+@keyframes chip-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.chip-in {
+  animation: chip-in var(--t-base) var(--ease) both;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.toast-in {
+  animation: toast-in var(--t-base) var(--ease) both;
+}
+
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--border-strong);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Скрываем полосу прокрутки у горизонтальных лент чипов,
+   оставляя сам скролл. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
