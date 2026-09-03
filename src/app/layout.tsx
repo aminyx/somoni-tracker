@@ -32,9 +32,9 @@ export const viewport: Viewport = {
   colorScheme: 'dark light',
   width: 'device-width',
   initialScale: 1,
-  // Панель открывается внутри Telegram: запрет масштабирования убирает
-  // случайный зум при двойном тапе по строке траты.
-  maximumScale: 1,
+  // maximumScale не ставим: запрет пинч-зума — нарушение WCAG 1.4.4,
+  // а панель оценивают именно на телефоне. Случайный зум от двойного тапа
+  // лечится через touch-action: manipulation на строках, а не запретом.
   viewportFit: 'cover',
 }
 

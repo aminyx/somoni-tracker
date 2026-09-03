@@ -9,21 +9,21 @@
   },
   "scripts": {
     "dev": "concurrently -n web,bot -c cyan,magenta \"npm:dev:web\" \"npm:dev:bot\"",
-    "dev:web": "next dev --turbopack -p 3000",
+    "dev:web": "next dev -p 3000",
     "dev:bot": "tsx watch src/bot/index.ts",
     "build": "next build",
-    "start": "next start -p ${PORT:-3000}",
+    "start": "next start",
     "bot": "tsx src/bot/index.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "seed": "tsx scripts/seed.ts",
-    "test": "node --test --import tsx tests/**/*.test.ts",
-    "typecheck": "tsc --noEmit",
-    "lint": "next lint"
+    "test": "node --test --import tsx \"tests/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@grammyjs/auto-retry": "^2.0.2",
     "better-sqlite3": "^13.0.3",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
@@ -31,7 +31,6 @@
     "next": "^16.3.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "recharts": "^3.10.1",
     "zod": "^4.5.4"
   },
   "devDependencies": {

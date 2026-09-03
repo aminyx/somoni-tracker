@@ -50,7 +50,11 @@ export const expenses = sqliteTable(
     currency: text('currency').notNull(),
     /** та же сумма в базовой валюте пользователя */
     baseMinor: integer('base_minor').notNull(),
-    /** курс на момент ввода: 1 currency = rate * baseCurrency */
+    /**
+     * Курс на момент ввода: сколько baseCurrency стоит ОДНА единица currency.
+     * 20 USD при rate 9.2382 → 184,76 TJS. Направление одно на весь проект,
+     * см. rates.ts: сервис курсов отдаёт обратное и инвертируется на входе.
+     */
     rate: real('rate').notNull().default(1),
     category: text('category').notNull(),
     description: text('description').notNull().default(''),

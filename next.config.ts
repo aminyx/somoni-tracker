@@ -11,7 +11,13 @@ const nextConfig: NextConfig = {
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          // X-Frame-Options: SAMEORIGIN здесь нельзя — на web.telegram.org
+          // Mini App открывается в iframe, и заголовок его бы убил.
+          // Разрешаем ровно домены Telegram, всё остальное запрещено.
+          {
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org",
+          },
         ],
       },
     ]

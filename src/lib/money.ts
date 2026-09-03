@@ -54,8 +54,10 @@ export const CURRENCIES: Record<string, CurrencyInfo> = {
   KGS: {
     code: 'KGS',
     exponent: 2,
-    symbol: 'сом',
-    name: 'сомов',
+    // Не «сом»: это сокращение занято сомони («такси 20 сом»),
+    // и два разных символа «сом» в одной ленте сбивали бы с толку.
+    symbol: 'KGS',
+    name: 'киргизских сомов',
     aliases: ['kgs', 'кгс'],
   },
   KZT: {
@@ -194,10 +196,12 @@ export function formatCompact(minor: number, code: string): string {
   if (value >= 1_000_000) {
     return `${(value / 1_000_000).toLocaleString('ru-RU', { maximumFractionDigits: 1 })}${NBSP}млн`
   }
-  if (value >= 10_000) {
+  if (value >= 100_000) {
     return `${(value / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 0 })}${NBSP}тыс`
   }
   if (value >= 1000) {
+    // До сотни тысяч оставляем десятую долю: «12,5 тыс» точнее, чем «13 тыс»,
+    // и разница в один символ.
     return `${(value / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 1 })}${NBSP}тыс`
   }
   return value.toLocaleString('ru-RU', { maximumFractionDigits: info.exponent })
