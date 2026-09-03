@@ -10,19 +10,6 @@ const schema = z.object({
   DEFAULT_TIMEZONE: z.string().default('Asia/Dushanbe'),
   DEFAULT_CURRENCY: z.string().default('TJS'),
   EXCHANGE_RATES_URL: z.string().optional(),
-  ENABLE_RECEIPT_OCR: z
-    .string()
-    .optional()
-    .transform((v) => v !== 'false' && v !== '0'),
-  ADMIN_TELEGRAM_IDS: z
-    .string()
-    .optional()
-    .transform((v) =>
-      (v ?? '')
-        .split(',')
-        .map((s) => Number(s.trim()))
-        .filter((n) => Number.isFinite(n) && n > 0),
-    ),
 })
 
 export type Env = z.infer<typeof schema>

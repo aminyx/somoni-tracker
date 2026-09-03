@@ -28,10 +28,6 @@ data/
 *.sqlite
 *.sqlite3
 
-# ocr кэш
-.tesseract/
-*.traineddata
-
 # логи / мусор ОС
 *.log
 npm-debug.log*
