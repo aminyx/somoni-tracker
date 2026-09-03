@@ -122,7 +122,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 Дальше:
 
 ```bash
-npm run db:push
+npm run db:migrate
 npm run dev
 ```
 

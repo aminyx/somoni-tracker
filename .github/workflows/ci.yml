@@ -28,6 +28,24 @@ jobs:
       - name: Тесты
         run: npm test
 
+      - name: Команды из README действительно работают
+        run: |
+          # db:migrate однажды молча ничего не делал на Windows: проверка
+          # определения «файл запущен напрямую» была сломана. Пусть падает тут,
+          # а не у судьи.
+          DATABASE_PATH=./ci-check.db npm run db:migrate
+          node -e "
+            const D = require('better-sqlite3');
+            const t = new D('./ci-check.db')
+              .prepare(\"select name from sqlite_master where type='table'\")
+              .all().map(r => r.name);
+            const need = ['users','expenses','sessions','auth_tokens','limits','category_overrides','rates'];
+            const missing = need.filter(n => !t.includes(n));
+            if (missing.length) { console.error('нет таблиц:', missing.join(', ')); process.exit(1); }
+            console.log('таблиц создано:', t.length);
+          "
+          rm -f ./ci-check.db*
+
       - name: Сборка панели
         run: npm run build
 
