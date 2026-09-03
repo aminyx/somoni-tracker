@@ -40,8 +40,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ru" suppressHydrationWarning>
-      <body className={`${onest.variable} ${mono.variable} antialiased`}>{children}</body>
+    // Переменные шрифтов вешаются на <html>, а не на <body>: font-family
+    // объявлен на html, и пустая переменная сделала бы всё объявление
+    // недействительным — страница уехала бы в Times New Roman.
+    <html lang="ru" className={`${onest.variable} ${mono.variable}`} suppressHydrationWarning>
+      <body className="antialiased">{children}</body>
     </html>
   )
 }

@@ -6,7 +6,16 @@
 import { and, asc, desc, eq, gte, isNull, lt, sql } from 'drizzle-orm'
 import { db } from './db'
 import { expenses } from './db/schema'
-import { dayKey, enumerateDays, previousRange, rangeFor, type Period, type Range } from './time'
+import {
+  addDays,
+  dayKey,
+  enumerateDays,
+  previousRange,
+  rangeFor,
+  startOfDay,
+  type Period,
+  type Range,
+} from './time'
 
 export interface UserContext {
   id: number
@@ -36,8 +45,16 @@ export interface PeriodSummary {
   currency: string
   byCategory: CategoryTotal[]
   byDay: DayTotal[]
-  /** Тот же период предыдущего цикла — для «−12 % к прошлому месяцу». */
+  /** Весь предыдущий период целиком. */
   previousTotalMinor: number
+  /**
+   * Предыдущий период, обрезанный по стольким же прошедшим дням.
+   * Третьего сентября честно сравнивать с 1–3 августа, а не с целым августом:
+   * иначе «−89 %» — это не экономия, а просто ещё не наступивший месяц.
+   */
+  previousComparableMinor: number
+  /** Сколько дней периода уже прошло. */
+  elapsedDays: number
   /** Средние траты в день по прошедшим дням периода. */
   averagePerDayMinor: number
   /** Самый дорогой день периода. */
@@ -132,6 +149,17 @@ export function summarize(user: UserContext, period: Period, at: number = Date.n
     null,
   )
 
+  // Прошлый период берём ровно на столько же дней: сравнивать три дня
+  // сентября с целым августом — значит рисовать экономию из воздуха.
+  let previousComparableMinor = previousTotalMinor
+  if (period !== 'all' && previousTotalMinor > 0) {
+    const comparableEnd = Math.min(
+      addDays(startOfDay(prev.start, user.timezone), elapsedDays, user.timezone),
+      prev.end,
+    )
+    previousComparableMinor = totalFor(user.id, { start: prev.start, end: comparableEnd }).totalMinor
+  }
+
   return {
     period,
     range,
@@ -141,6 +169,8 @@ export function summarize(user: UserContext, period: Period, at: number = Date.n
     byCategory: byCategory(user.id, range),
     byDay: days,
     previousTotalMinor,
+    previousComparableMinor,
+    elapsedDays,
     averagePerDayMinor: Math.round(totalMinor / elapsedDays),
     topDay,
   }

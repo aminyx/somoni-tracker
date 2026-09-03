@@ -61,7 +61,36 @@
 
 /* Светлая тема — та же вёрстка, инвертированная, а не другой дизайн.
    Кислотный акцент в светлой теме остаётся заливкой: как текст на белом
-   он даёт 1,4:1 и нечитаем. */
+   он даёт 1,4:1 и нечитаем, поэтому для текста есть отдельный --accent-ink.
+
+   Два блока, а не один: первый ловит системную настройку (её и присылает
+   Telegram своим клиентом), второй — явный выбор через data-theme.
+   Явный выбор должен побеждать систему в обе стороны. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+  color-scheme: light;
+  --bg: #fbfaf7;
+  --surface: #ffffff;
+  --surface-2: #f2f0ea;
+  --border: #e4e1d8;
+  --border-strong: #cfcbbf;
+  --grid: #ebe8e0;
+  --bar: #c8c4b8;
+
+  --text-1: #14140f;
+  --text-2: #5c594f;
+  --text-3: #6e6b61;
+
+  --accent: #d9f24a;
+  --accent-ink: #5e7a00;
+  --on-accent: #14140f;
+  --pos: #0f7a43;
+  --neg: #c1361f;
+  --pos-bg: rgb(15 122 67 / 0.12);
+  --neg-bg: rgb(193 54 31 / 0.12);
+  }
+}
+
 :root[data-theme='light'] {
   color-scheme: light;
   --bg: #fbfaf7;
@@ -83,15 +112,6 @@
   --neg: #c1361f;
   --pos-bg: rgb(15 122 67 / 0.12);
   --neg-bg: rgb(193 54 31 / 0.12);
-
-  --cat-1: #6e8c00;
-  --cat-2: #0f6fa8;
-  --cat-3: #b2650a;
-  --cat-4: #7a4fd1;
-  --cat-5: #0f7a43;
-  --cat-6: #c0405e;
-  --cat-7: #0e7a72;
-  --cat-8: #6e6b60;
 }
 
 @theme inline {
@@ -244,4 +264,29 @@ body {
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+/* Цвет категории. Компонент кладёт оба значения в переменные, а тема
+   выбирает нужное: на светлом фоне исходный «тёмный» тон даёт 1,4:1. */
+.cat-color {
+  background: var(--cat);
+}
+.cat-text {
+  color: var(--cat);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) .cat-color {
+    background: var(--cat-light);
+  }
+  :root:not([data-theme='dark']) .cat-text {
+    color: var(--cat-light);
+  }
+}
+
+:root[data-theme='light'] .cat-color {
+  background: var(--cat-light);
+}
+:root[data-theme='light'] .cat-text {
+  color: var(--cat-light);
 }

@@ -174,19 +174,16 @@ export function report(
     `Потрачено: <b>${total}</b> · ${summary.count} ${plural(summary.count, PLURAL_EXPENSE)}`,
   ]
 
-  // Сравнение с прошлым периодом — только если там вообще были траты,
-  // иначе «+100 %» это не факт, а артефакт.
-  if (summary.previousTotalMinor > 0) {
-    const delta =
-      ((summary.totalMinor - summary.previousTotalMinor) / summary.previousTotalMinor) * 100
-    const rounded = Math.round(delta)
+  // Сравниваем с тем же числом прошедших дней прошлого периода и только
+  // если там были траты: «+100 %» от нуля — не факт, а артефакт.
+  const previous = summary.previousComparableMinor
+  if (previous > 0) {
+    const rounded = Math.round(((summary.totalMinor - previous) / previous) * 100)
+    const tail = `за те же ${summary.elapsedDays} ${plural(summary.elapsedDays, ['день', 'дня', 'дней'])} прошлого периода — ${formatMoney(previous, summary.currency)}`
     if (Math.abs(rounded) < 3) {
-      lines.push(`≈ столько же, сколько в прошлом периоде (${formatMoney(summary.previousTotalMinor, summary.currency)})`)
+      lines.push(`≈ столько же: ${tail}`)
     } else {
-      const arrow = rounded > 0 ? '↑' : '↓'
-      lines.push(
-        `${arrow} ${Math.abs(rounded)}% к прошлому периоду (${formatMoney(summary.previousTotalMinor, summary.currency)})`,
-      )
+      lines.push(`${rounded > 0 ? '↑' : '↓'} ${Math.abs(rounded)}%, ${tail}`)
     }
   }
 

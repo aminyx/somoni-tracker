@@ -20,8 +20,10 @@ export interface Category {
   /** название на таджикском — пригодится для второй локали */
   nameTg: string
   emoji: string
-  /** цвет закреплён за категорией; контраст на тёмном фоне не ниже 7,3:1 */
+  /** цвет для тёмной темы; контраст на тёмном фоне не ниже 7,3:1 */
   color: string
+  /** тот же тон, приглушённый под светлый фон: на белом исходный даёт 1,4:1 */
+  colorLight: string
   /** что сюда попадает — показываем в подсказке бота */
   scope: string
 }
@@ -33,6 +35,7 @@ export const CATEGORIES: Category[] = [
     nameTg: 'Хӯрокворӣ',
     emoji: '🛒',
     color: '#98E473',
+    colorLight: '#388016',
     scope: 'еда домой, базар, супермаркет, нон, мясо, овощи',
   },
   {
@@ -41,6 +44,7 @@ export const CATEGORIES: Category[] = [
     nameTg: 'Хӯрок дар берун',
     emoji: '🍽️',
     color: '#FF9851',
+    colorLight: '#C14F00',
     scope: 'кафе, чойхона, ошхона, сомса, обед на работе, доставка',
   },
   {
@@ -49,6 +53,7 @@ export const CATEGORIES: Category[] = [
     nameTg: 'Нақлиёт',
     emoji: '🚕',
     color: '#5CBDFF',
+    colorLight: '#0076C7',
     scope: 'такси, маршрутка, автобус, бензин, машина, билеты',
   },
   {
@@ -57,6 +62,7 @@ export const CATEGORIES: Category[] = [
     nameTg: 'Манзил ва хизматрасонӣ',
     emoji: '🏠',
     color: '#C89DFF',
+    colorLight: '#923CFF',
     scope: 'аренда, свет, вода, газ, мусор, ЖЭК',
   },
   {
@@ -65,6 +71,7 @@ export const CATEGORIES: Category[] = [
     nameTg: 'Алоқа ва интернет',
     emoji: '📶',
     color: '#18D8FF',
+    colorLight: '#007E98',
     scope: 'баланс телефона, тариф, домашний интернет, ТВ',
   },
   {
@@ -73,6 +80,7 @@ export const CATEGORIES: Category[] = [
     nameTg: 'Саломатӣ ва нигоҳубин',
     emoji: '💊',
     color: '#FF8D83',
+    colorLight: '#E41200',
     scope: 'аптека, врач, анализы, гигиена, парикмахерская, косметика',
   },
   {
@@ -81,6 +89,7 @@ export const CATEGORIES: Category[] = [
     nameTg: 'Либос ва пойафзол',
     emoji: '👕',
     color: '#FF8AB6',
+    colorLight: '#E10055',
     scope: 'одежда, обувь, сумки, ателье, химчистка',
   },
   {
@@ -89,6 +98,7 @@ export const CATEGORIES: Category[] = [
     nameTg: 'Хона ва рӯзгор',
     emoji: '🧺',
     color: '#DCDD77',
+    colorLight: '#76771B',
     scope: 'бытовая химия, посуда, мебель, техника, ремонт квартиры',
   },
   {
@@ -97,6 +107,7 @@ export const CATEGORIES: Category[] = [
     nameTg: 'Таҳсил',
     emoji: '🎓',
     color: '#9AADFF',
+    colorLight: '#3E62FF',
     scope: 'школа, университет, курсы, репетитор, канцтовары, книги',
   },
   {
@@ -105,6 +116,7 @@ export const CATEGORIES: Category[] = [
     nameTg: 'Фароғат ва варзиш',
     emoji: '🎬',
     color: '#FFBF2B',
+    colorLight: '#966900',
     scope: 'кино, спортзал, подписки, игры, поездки, отдых',
   },
   {
@@ -113,6 +125,7 @@ export const CATEGORIES: Category[] = [
     nameTg: 'Тӯҳфа ва маросим',
     emoji: '🎁',
     color: '#EB90E3',
+    colorLight: '#C81FB9',
     scope: 'тӯй, подарки, садақа, помощь родным, праздники',
   },
   {
@@ -121,6 +134,7 @@ export const CATEGORIES: Category[] = [
     nameTg: 'Молия',
     emoji: '💳',
     color: '#00DFDA',
+    colorLight: '#007E7B',
     scope: 'кредит, долг, переводы, комиссии, налоги, страховка',
   },
   {
@@ -129,6 +143,7 @@ export const CATEGORIES: Category[] = [
     nameTg: 'Дигар',
     emoji: '📦',
     color: '#94A3B8',
+    colorLight: '#5F7492',
     scope: 'fallback: сигнала не хватило или пользователь не помнит',
   },
 ]

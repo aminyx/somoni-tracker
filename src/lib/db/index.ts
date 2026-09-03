@@ -14,7 +14,9 @@ const globalForDb = globalThis as unknown as {
 }
 
 function create() {
-  const path = resolve(process.env.DATABASE_PATH ?? './data/tracker.db')
+  // Путь берётся из окружения, статически его не проследить —
+  // сборщику это и не нужно, файл открывается во время работы.
+  const path = resolve(/* turbopackIgnore: true */ process.env.DATABASE_PATH ?? './data/tracker.db')
   const dir = dirname(path)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 
