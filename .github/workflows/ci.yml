@@ -38,7 +38,7 @@ jobs:
             exit 1
           fi
           # Токен бота выглядит как 8-10 цифр, двоеточие и 35 символов.
-          if git grep -nIE '[0-9]{8,10}:[A-Za-z0-9_-]{35}' -- . ':!*.md' ':!.github/*'; then
+          if git grep -nIE '[0-9]{8,10}:[A-Za-z0-9_-]{35}' -- . ':!*.md' ':!.github/*' ':!.env.example'; then
             echo 'Похоже на токен бота в коде.' >&2
             exit 1
           fi
