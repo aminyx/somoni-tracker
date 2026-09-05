@@ -12,7 +12,45 @@
 
 ---
 
-## Вариант 1 (основной): свой сервер с Docker
+## Вариант 0: чистый сервер, порты 80 и 443 свободны
+
+Самый короткий путь. Caddy поднимается тем же compose и сам получает
+сертификат Let's Encrypt — ставить и настраивать на хосте ничего не нужно.
+
+```bash
+# Docker, если его ещё нет
+curl -fsSL https://get.docker.com | sh
+
+# Подкачка: на сервере с 2 ГБ ОЗУ сборщик Next иначе падает по памяти
+fallocate -l 3G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
+install -d -m 755 /opt/somoni-tracker && cd /opt/somoni-tracker
+git clone https://github.com/aminyx/somoni-tracker.git .
+cp .env.example .env && chmod 600 .env
+```
+
+Заполнить в `.env`: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`,
+`SESSION_SECRET`, `DATABASE_PATH=/app/data/tracker.db`, а также домен —
+`SITE_DOMAIN` и `APP_URL=https://<тот же домен>`.
+
+Своего домена нет? Годится бесплатное имя, которое резолвится в ваш адрес:
+`tracker.<ip-через-дефисы>.sslip.io` — например `tracker.203-0-113-7.sslip.io`.
+Сертификат Let's Encrypt на такое имя выдаётся: sslip.io внесён в Public
+Suffix List, поэтому каждое поддоменное имя считается отдельным.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
+docker compose logs -f caddy      # ждём выдачи сертификата, обычно 10–30 с
+curl -sf https://<домен>/api/health
+```
+
+Порты 80 и 443 должны быть открыты в брандмауэре провайдера — иначе
+Let's Encrypt не сможет проверить домен.
+
+---
+
+## Вариант 1: свой сервер с Docker, где уже есть Caddy
 
 Предполагается, что на сервере уже есть Caddy, который держит 80 и 443.
 Ниже — минимальное вмешательство: один каталог, один файл конфигурации

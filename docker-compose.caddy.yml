@@ -1,0 +1,30 @@
+# Надстройка для чистого сервера, где порты 80 и 443 свободны.
+# Поднимает Caddy, который сам получает сертификат Let's Encrypt.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
+#
+# Если на сервере уже есть свой обратный прокси — эта надстройка не нужна,
+# используйте только docker-compose.yml и проксируйте на 127.0.0.1:3000.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      # Домен обязателен: без него Caddy не поймёт, на какое имя брать сертификат.
+      SITE_DOMAIN: ${SITE_DOMAIN:?нужен SITE_DOMAIN в .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+    depends_on:
+      - web
+
+volumes:
+  caddy_data:
+  caddy_config:
+  caddy_logs:
