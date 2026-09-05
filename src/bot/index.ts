@@ -1294,18 +1294,23 @@ bot.catch((error) => {
 async function main() {
   runMigrations()
 
-  await bot.api.setMyCommands([
-    { command: 'today', description: 'Итог за сегодня' },
-    { command: 'week', description: 'Итог за неделю' },
-    { command: 'month', description: 'Итог за месяц' },
-    { command: 'last', description: 'Последние траты' },
-    { command: 'panel', description: 'Открыть веб-панель' },
-    { command: 'limit', description: 'Лимит по категории' },
-    { command: 'export', description: 'Выгрузить CSV' },
-    { command: 'settings', description: 'Часовой пояс и валюта' },
-    { command: 'demo', description: 'Заполнить примерами' },
-    { command: 'help', description: 'Как пользоваться' },
-  ])
+  // Меню команд регистрируется на каждом языке. Без language_code Telegram
+  // показал бы русские подписи и англоязычному судье, и таджикоязычному —
+  // список команд это первое, что видно в клиенте после /start.
+  const COMMANDS = [
+    'today', 'week', 'month', 'last', 'panel',
+    'limit', 'export', 'settings', 'demo', 'help',
+  ] as const
+  for (const locale of LOCALES) {
+    const commands = COMMANDS.map((command) => ({
+      command,
+      description: t(locale, `cmd.${command}`),
+    }))
+    // Русский ставим ещё и списком по умолчанию: клиент с языком, которого
+    // мы не знаем, иначе получил бы пустое меню.
+    if (locale === 'ru') await bot.api.setMyCommands(commands)
+    await bot.api.setMyCommands(commands, { language_code: locale })
+  }
 
   // Модель распознавания греем в фоне: первый пользователь не должен
   // ждать, пока скачаются файлы модели.
