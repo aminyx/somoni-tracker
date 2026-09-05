@@ -16,6 +16,8 @@ services:
     ports:
       - '127.0.0.1:3000:3000'
     volumes:
+      # Каталог должен принадлежать uid 1000 (пользователь node в образе):
+      #   install -d -o 1000 -g 1000 data models
       - ./data:/app/data
     restart: unless-stopped
     healthcheck:

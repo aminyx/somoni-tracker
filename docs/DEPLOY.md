@@ -28,6 +28,12 @@ echo '/swapfile none swap sw 0 0' >> /etc/fstab
 install -d -m 755 /opt/somoni-tracker && cd /opt/somoni-tracker
 git clone https://github.com/aminyx/somoni-tracker.git .
 cp .env.example .env && chmod 600 .env
+
+# Каталоги под базу и модели ДО первого запуска и с нужным владельцем.
+# Контейнер работает под пользователем node (uid 1000); если каталоги
+# создаст docker, они будут принадлежать root, и приложение упадёт
+# с «SqliteError: unable to open database file».
+install -d -o 1000 -g 1000 -m 755 data models
 ```
 
 Заполнить в `.env`: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`,
@@ -209,5 +215,6 @@ Railway (Hobby, около 5 долларов в месяц): оба проце�
 | Кнопка «Открыть панель» ведёт на localhost | В `.env` не заполнен `APP_URL`. |
 | «Ссылка недействительна» сразу после нажатия | Ссылка одноразовая и живёт 10 минут — запросите новую через `/panel`. |
 | Курсы не обновляются | Не критично: берётся встроенная таблица. Проверить `docker compose logs bot | grep курсы`. |
+| `SqliteError: unable to open database file` | Каталог `data` принадлежит root: `install -d -o 1000 -g 1000 data models` и `docker compose up -d`. |
 | Бот не читает чеки | `docker compose logs bot | grep чек`. Чаще всего не скачались модели: нужен доступ к huggingface.co, либо выключите `ENABLE_RECEIPT_OCR`. |
 | Боту не хватает памяти | Распознавание чеков — самая тяжёлая часть. `ENABLE_RECEIPT_OCR=false` снимает около 300 МБ. |

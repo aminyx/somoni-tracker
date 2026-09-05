@@ -7,9 +7,7 @@
 | | |
 |---|---|
 | **Бот** | [t.me/SomoniTrackerBot](https://t.me/SomoniTrackerBot) |
-| **Панель** | https://tracker.example.tj |
-
-> Ссылки заполняются после развёртывания, см. [«Развёртывание»](#развёртывание).
+| **Панель** | https://tracker.somonvpn.tech |
 
 ---
 
@@ -227,7 +225,7 @@ docker compose up -d --build
 включая минимальную правку конфигурации Caddy и порядок отката —
 в [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
-Проверка живости: `GET /api/health` отвечает `{"ok":true}`.
+Проверка живости: [`/api/health`](https://tracker.somonvpn.tech/api/health) отвечает `{"ok":true}`.
 
 ---
 
