@@ -15,7 +15,7 @@ import { Bot, GrammyError, HttpError, InlineKeyboard, InputFile, Keyboard } from
 import type { Context } from 'grammy'
 import { runMigrations } from '../../scripts/migrate'
 import { pruneExpired, issueLoginToken } from '../lib/auth'
-import { CATEGORIES, categoryBySlug, isCategorySlug } from '../lib/categories'
+import { CATEGORIES, categoryBySlug, categoryName, isCategorySlug } from '../lib/categories'
 import { csvFilename, expensesToCsv } from '../lib/csv'
 import { clearDemo, hasDemo, seedDemo } from '../lib/demo'
 import type { User } from '../lib/db/schema'
@@ -30,11 +30,14 @@ import {
   listLimits,
   removeLimit,
   restoreExpense,
+  localeOf,
   setBaseCurrency,
   setLimit,
+  setLocale,
   setTimezone,
   updateExpense,
 } from '../lib/expenses'
+import { EXAMPLES, LOCALES, LOCALE_NAMES, isLocale, t, type Locale } from '../lib/i18n'
 import { formatMoney, fromMinor, isValidCurrency, toMinor } from '../lib/money'
 import { isOcrEnabled, recognizeReceipt, warmupOcr } from '../lib/ocr'
 import { explainFailure, parseExpense, splitEntries } from '../lib/parser'
@@ -48,7 +51,7 @@ import {
   esc,
   expenseCard,
   expenseKeyboard,
-  HELP,
+  helpText,
   humanTime,
   limitMessage,
   plural,
@@ -144,34 +147,44 @@ function panelReply(userId: number): { extraText: string; keyboard: InlineKeyboa
  * input_field_placeholder делает главную работу: в пустом поле ввода
  * написано «кофе 350», и формат понятен без единого слова инструкции.
  */
-const BUTTONS = {
-  today: 'Сегодня',
-  week: 'Неделя',
-  month: 'Месяц',
-  panel: 'Панель',
-  last: 'Последние',
-  help: 'Как писать',
-} as const
+const BUTTON_KEYS = ['today', 'week', 'month', 'panel', 'last', 'help'] as const
+type ButtonKey = (typeof BUTTON_KEYS)[number]
 
-function mainKeyboard() {
+/** Подпись кнопки на языке пользователя. */
+function buttonLabel(locale: Locale, key: ButtonKey): string {
+  return t(locale, `btn.${key}`)
+}
+
+/**
+ * Все варианты подписи на всех языках.
+ *
+ * Нажатие приходит боту обычным текстом, а язык человек может сменить —
+ * значит слушать надо все три подписи сразу. Иначе после смены языка
+ * кнопки молча перестают работать: текст уходит в разбор траты.
+ */
+function allButtonLabels(key: ButtonKey): string[] {
+  return LOCALES.map((locale) => buttonLabel(locale, key))
+}
+
+function mainKeyboard(locale: Locale) {
   const keyboard = new Keyboard()
-    .text(BUTTONS.today)
-    .text(BUTTONS.week)
-    .text(BUTTONS.month)
+    .text(buttonLabel(locale, 'today'))
+    .text(buttonLabel(locale, 'week'))
+    .text(buttonLabel(locale, 'month'))
     .row()
-    .text(BUTTONS.panel)
-    .text(BUTTONS.last)
-    .text(BUTTONS.help)
+    .text(buttonLabel(locale, 'panel'))
+    .text(buttonLabel(locale, 'last'))
+    .text(buttonLabel(locale, 'help'))
     .resized()
     .persistent()
-    .placeholder('кофе 350')
+    .placeholder(t(locale, 'placeholder.input'))
 
   // Цвет кнопок появился в Bot API 10.3 (24 августа 2026). Синим выделена
   // «Панель» — главное действие после ввода траты; остальные обычные,
   // иначе выделенным оказывается всё и не выделено ничего.
   for (const row of keyboard.keyboard) {
     for (const button of row) {
-      if (typeof button === 'object' && button.text === BUTTONS.panel) {
+      if (typeof button === 'object' && button.text === buttonLabel(locale, 'panel')) {
         ;(button as { style?: string }).style = 'primary'
       }
     }
@@ -237,6 +250,15 @@ function timezoneKeyboard(current: string): InlineKeyboard {
   return keyboard
 }
 
+function languageKeyboard(current: Locale): InlineKeyboard {
+  const keyboard = new InlineKeyboard()
+  for (const locale of LOCALES) {
+    const mark = locale === current ? '• ' : ''
+    keyboard.text(`${mark}${LOCALE_NAMES[locale]}`, `lang:${locale}`).row()
+  }
+  return keyboard
+}
+
 function currencyKeyboard(current: string): InlineKeyboard {
   const keyboard = new InlineKeyboard()
   CURRENCY_CHOICES.forEach(([name, code], index) => {
@@ -269,17 +291,18 @@ bot.command('start', async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
 
+  const L = localeOf(user)
+  const examples = EXAMPLES[L]
   const name = user.firstName ? `, ${esc(user.firstName)}` : ''
   const panel = panelReply(user.id)
   await ctx.reply(
     [
-      `Привет${name}. Я записываю траты.`,
+      t(L, 'start.greeting', { name }),
       '',
-      'Просто напишите строку — например <code>кофе 350</code> или <code>такси 900 работа</code>.',
-      'Сумму и категорию разберу сам.',
+      t(L, 'start.howto', { example1: examples.one, example2: examples.two }),
       '',
-      'Итоги — кнопками ниже или командами /today, /week, /month.',
-      'Графики по дням и категориям — в панели, вход через того же бота, без пароля.',
+      t(L, 'start.reports'),
+      t(L, 'start.panel'),
     ].join('\n') + panel.extraText,
     {
       parse_mode: 'HTML',
@@ -289,24 +312,26 @@ bot.command('start', async (ctx) => {
   )
   // Отдельным сообщением: показать кнопки и подсказать формат ввода.
   // Reply-клавиатуру нельзя послать вместе с inline-кнопкой в одном сообщении.
-  await ctx.reply('Кнопки ниже — то же самое, что команды.', {
-    reply_markup: mainKeyboard(),
-  })
+  await ctx.reply(t(L, 'start.buttons'), { reply_markup: mainKeyboard(L) })
 })
 
 bot.command('help', async (ctx) => {
-  await ctx.reply(HELP, { parse_mode: 'HTML', link_preview_options: { is_disabled: true } })
+  const user = currentUser(ctx)
+  const L = user ? localeOf(user) : 'ru'
+  await ctx.reply(helpText(L, EXAMPLES[L]), {
+    parse_mode: 'HTML',
+    link_preview_options: { is_disabled: true },
+  })
 })
 
 bot.command('panel', async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
   const panel = panelReply(user.id)
-  await ctx.reply(
-    'Ссылка действует 10 минут и открывается один раз — так её нельзя переслать и войти чужим.' +
-      panel.extraText,
-    { reply_markup: panel.keyboard, link_preview_options: { is_disabled: true } },
-  )
+  await ctx.reply(t(localeOf(user), 'panel.once') + panel.extraText, {
+    reply_markup: panel.keyboard,
+    link_preview_options: { is_disabled: true },
+  })
 })
 
 // Context, а не CommandContext: отчёт вызывается и командой, и кнопкой.
@@ -317,12 +342,16 @@ async function sendReport(ctx: Context, period: 'day' | 'week' | 'month') {
     { id: user.id, timezone: user.timezone, baseCurrency: user.baseCurrency, weekStart: user.weekStart },
     period,
   )
+  const L = localeOf(user)
   const panel = panelReply(user.id)
-  await ctx.reply(report(summary, user.timezone, config.APP_URL) + panel.extraText, {
-    parse_mode: 'HTML',
-    reply_markup: panel.keyboard,
-    link_preview_options: { is_disabled: true },
-  })
+  await ctx.reply(
+    report(summary, user.timezone, config.APP_URL, L, EXAMPLES[L].one) + panel.extraText,
+    {
+      parse_mode: 'HTML',
+      reply_markup: panel.keyboard,
+      link_preview_options: { is_disabled: true },
+    },
+  )
 }
 
 bot.command(['today', 'сегодня'], (ctx) => sendReport(ctx, 'day'))
@@ -333,23 +362,24 @@ bot.command(['month', 'месяц'], (ctx) => sendReport(ctx, 'month'))
 async function sendRecent(ctx: Context) {
   const user = currentUser(ctx)
   if (!user) return
+  const L = localeOf(user)
   const rows = recentExpenses(user.id, 10)
   if (rows.length === 0) {
-    await ctx.reply('Пока ни одной траты. Напишите «кофе 350».')
+    await ctx.reply(t(L, 'last.empty', { example: EXAMPLES[L].one }))
     return
   }
 
-  const lines = ['<b>Последние траты</b>', '']
+  const lines = [t(L, 'last.title'), '']
   for (const row of rows) {
     const category = categoryBySlug(row.category)
-    const title = row.description ? esc(row.description) : 'без описания'
+    const title = row.description ? esc(row.description) : t(L, 'last.noDescription')
     lines.push(
       `${category.emoji} ${title} — <b>${formatMoney(row.amountMinor, row.currency)}</b>`,
-      `<i>${humanTime(row.spentAt, user.timezone)}</i> · /e_${row.id}`,
+      `<i>${humanTime(row.spentAt, user.timezone, L)}</i> · /e_${row.id}`,
       '',
     )
   }
-  lines.push('Чтобы поправить или удалить — нажмите ссылку под тратой.')
+  lines.push(t(L, 'last.hint'))
   await ctx.reply(lines.join('\n'), { parse_mode: 'HTML', link_preview_options: { is_disabled: true } })
 }
 
@@ -360,78 +390,87 @@ bot.hears(/^\/e_([0-9a-z]+)$/i, async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
   const id = ctx.match[1]!
+  const L = localeOf(user)
   const expense = getExpense(user.id, id)
   if (!expense || expense.deletedAt) {
-    await ctx.reply('Такой траты нет.')
+    await ctx.reply(t(L, 'last.notFound'))
     return
   }
   const totals = todayTotals(user)
   await ctx.reply(
-    expenseCard(expense, user.timezone, totals.totalMinor, totals.count, user.baseCurrency),
-    { parse_mode: 'HTML', reply_markup: expenseKeyboard(expense) },
+    expenseCard(expense, user.timezone, totals.totalMinor, totals.count, user.baseCurrency, L),
+    { parse_mode: 'HTML', reply_markup: expenseKeyboard(expense, [], L) },
   )
 })
 
 /* Нажатия на кнопки. Регистрируются ДО обработчика обычного текста,
    иначе «Месяц» ушло бы в разбор траты и получило «не нашёл сумму». */
-bot.hears(BUTTONS.today, (ctx) => sendReport(ctx, 'day'))
-bot.hears(BUTTONS.week, (ctx) => sendReport(ctx, 'week'))
-bot.hears(BUTTONS.month, (ctx) => sendReport(ctx, 'month'))
-bot.hears(BUTTONS.last, sendRecent)
+bot.hears(allButtonLabels('today'), (ctx) => sendReport(ctx, 'day'))
+bot.hears(allButtonLabels('week'), (ctx) => sendReport(ctx, 'week'))
+bot.hears(allButtonLabels('month'), (ctx) => sendReport(ctx, 'month'))
+bot.hears(allButtonLabels('last'), sendRecent)
 
-bot.hears(BUTTONS.help, async (ctx) => {
-  await ctx.reply(HELP, {
+bot.hears(allButtonLabels('help'), async (ctx) => {
+  const user = currentUser(ctx)
+  const L = user ? localeOf(user) : 'ru'
+  await ctx.reply(helpText(L, EXAMPLES[L]), {
     parse_mode: 'HTML',
     link_preview_options: { is_disabled: true },
-    reply_markup: mainKeyboard(),
+    reply_markup: mainKeyboard(L),
   })
 })
 
-bot.hears(BUTTONS.panel, async (ctx) => {
+bot.hears(allButtonLabels('panel'), async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
   const panel = panelReply(user.id)
-  await ctx.reply(
-    'Ссылка действует 10 минут и открывается один раз — так её нельзя переслать и войти чужим.' +
-      panel.extraText,
-    { reply_markup: panel.keyboard, link_preview_options: { is_disabled: true } },
-  )
+  await ctx.reply(t(localeOf(user), 'panel.once') + panel.extraText, {
+    reply_markup: panel.keyboard,
+    link_preview_options: { is_disabled: true },
+  })
 })
 
 bot.command(['limit', 'limits'], async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
+  const L = localeOf(user)
   const argument = ctx.match?.trim() ?? ''
 
   if (!argument) {
     const rows = listLimits(user)
     if (rows.length === 0) {
       const names = CATEGORIES.filter((c) => c.slug !== 'other')
-        .map((c) => c.name.toLowerCase())
+        .map((c) => categoryName(c.slug, L).toLowerCase())
         .join(', ')
       await ctx.reply(
         [
-          '<b>Лимиты по категориям</b>',
+          t(L, 'limit.title'),
           '',
-          'Задайте месячный потолок — предупрежу на 80% и когда он будет исчерпан.',
+          t(L, 'limit.intro'),
           '',
-          'Например: <code>/limit продукты 2000</code>',
-          `Снять: <code>/limit продукты 0</code>`,
+          t(L, 'limit.example'),
           '',
-          `Категории: ${esc(names)}`,
+          t(L, 'limit.categories', { list: esc(names) }),
         ].join('\n'),
         { parse_mode: 'HTML' },
       )
       return
     }
 
-    const lines = ['<b>Лимиты на этот месяц</b>', '']
+    const lines = [t(L, 'limit.current'), '']
     for (const row of rows) {
       const category = categoryBySlug(row.category)
       const share = row.amountMinor > 0 ? Math.round((row.spentMinor / row.amountMinor) * 100) : 0
       const mark = share >= 100 ? '🔴' : share >= 80 ? '🟡' : '🟢'
       lines.push(
-        `${mark} ${category.emoji} ${category.name} — ${formatMoney(row.spentMinor, row.currency)} из ${formatMoney(row.amountMinor, row.currency)} (${share}%)`,
+        t(L, 'limit.row', {
+          mark,
+          emoji: category.emoji,
+          name: categoryName(row.category, L),
+          spent: formatMoney(row.spentMinor, row.currency),
+          limit: formatMoney(row.amountMinor, row.currency),
+          percent: share,
+        }),
       )
     }
     await ctx.reply(lines.join('\n'), { parse_mode: 'HTML' })
@@ -441,54 +480,70 @@ bot.command(['limit', 'limits'], async (ctx) => {
   // «/limit продукты 2000» — категория словом, сумма числом.
   const match = /^(.+?)\s+(\d+(?:[.,]\d+)?)$/.exec(argument)
   if (!match) {
-    await ctx.reply('Формат: <code>/limit продукты 2000</code>', { parse_mode: 'HTML' })
+    await ctx.reply(t(L, 'limit.format'), { parse_mode: 'HTML' })
     return
   }
   const name = match[1]!.trim().toLowerCase()
   const amount = Number(match[2]!.replace(',', '.'))
+  // Ищем по названию на любом из языков: человек мог сменить язык,
+  // а команду написать по привычке на прежнем.
+  const matches = (c: (typeof CATEGORIES)[number], exact: boolean) =>
+    LOCALES.some((loc) => {
+      const label = categoryName(c.slug, loc).toLowerCase()
+      return exact ? label === name : label.startsWith(name)
+    })
   const category =
-    CATEGORIES.find((c) => c.name.toLowerCase() === name) ??
-    CATEGORIES.find((c) => c.name.toLowerCase().startsWith(name)) ??
+    CATEGORIES.find((c) => matches(c, true)) ??
+    CATEGORIES.find((c) => matches(c, false)) ??
     (isCategorySlug(name) ? categoryBySlug(name) : undefined)
 
   if (!category) {
-    await ctx.reply(`Не знаю категорию «${esc(name)}». Список — в /limit без аргументов.`, {
-      parse_mode: 'HTML',
-    })
+    await ctx.reply(t(L, 'limit.unknownCategory', { name: esc(name) }), { parse_mode: 'HTML' })
     return
   }
 
   if (amount === 0) {
     const removed = removeLimit(user.id, category.slug)
-    await ctx.reply(removed ? `Лимит на «${category.name}» снят.` : 'Такого лимита не было.')
+    await ctx.reply(
+      removed
+        ? t(L, 'limit.removed', { name: categoryName(category.slug, L) })
+        : t(L, 'limit.absent'),
+    )
     return
   }
 
   setLimit(user, category.slug, amount)
   await ctx.reply(
-    `${category.emoji} Лимит на «${category.name}»: ${formatMoney(
-      Math.round(amount * 100),
-      user.baseCurrency,
-    )} в месяц.`,
+    t(L, 'limit.set', {
+      emoji: category.emoji,
+      name: categoryName(category.slug, L),
+      amount: formatMoney(Math.round(amount * 100), user.baseCurrency),
+    }),
   )
 })
 
 bot.command('export', async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
+  const L = localeOf(user)
   const now = Date.now()
   const range = rangeFor('month', now, user.timezone, user.weekStart)
   const rows = expensesInRange(user.id, range)
 
   if (rows.length === 0) {
-    await ctx.reply('За этот месяц трат нет — выгружать нечего.')
+    await ctx.reply(t(L, 'export.empty'))
     return
   }
 
   const csv = expensesToCsv(rows, user.timezone, user.baseCurrency)
   await ctx.replyWithDocument(
     new InputFile(Buffer.from(csv, 'utf8'), csvFilename('траты', now, user.timezone)),
-    { caption: `${rows.length} ${plural(rows.length, ['трата', 'траты', 'трат'])} за текущий месяц.` },
+    {
+      caption: t(L, 'export.caption', {
+        count: rows.length,
+        plural: plural(L, 'plural.expense', rows.length),
+      }),
+    },
   )
 })
 
@@ -500,9 +555,10 @@ bot.command('demo', async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
 
+  const L = localeOf(user)
   if (hasDemo(user.id)) {
     const panel = panelReply(user.id)
-    await ctx.reply('Примеры уже добавлены. Убрать их — /demo_clear.' + panel.extraText, {
+    await ctx.reply(t(L, 'demo.already') + panel.extraText, {
       reply_markup: panel.keyboard,
       link_preview_options: { is_disabled: true },
     })
@@ -515,11 +571,11 @@ bot.command('demo', async (ctx) => {
   const panel = panelReply(user.id)
   await ctx.reply(
     [
-      `Добавил ${added} ${plural(added, ['трату', 'траты', 'трат'])} за последние полтора месяца.`,
-      'Это ваши собственные записи — их видно только вам.',
+      t(L, 'demo.added', { count: added, plural: plural(L, 'plural.expense', added) }),
+      t(L, 'demo.yours'),
       '',
-      'Посмотрите /month, а потом откройте панель.',
-      'Убрать примеры одной командой: /demo_clear',
+      t(L, 'demo.next'),
+      t(L, 'demo.clearHint'),
     ].join('\n') + panel.extraText,
     { reply_markup: panel.keyboard, link_preview_options: { is_disabled: true } },
   )
@@ -528,11 +584,12 @@ bot.command('demo', async (ctx) => {
 bot.command('demo_clear', async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
+  const L = localeOf(user)
   const removed = clearDemo(user.id)
   await ctx.reply(
     removed > 0
-      ? `Убрал ${removed} ${plural(removed, ['пример', 'примера', 'примеров'])}. Ваши настоящие траты не тронуты.`
-      : 'Примеров не было.',
+      ? t(L, 'demo.cleared', { count: removed, plural: plural(L, 'plural.example', removed) })
+      : t(L, 'demo.nothing'),
   )
 })
 
@@ -583,6 +640,17 @@ bot.command('settings', async (ctx) => {
       await ctx.reply(`Часовой пояс: ${asZone}. «Сегодня» теперь считается по нему.`)
       return
     }
+    // «/settings tg» — смена языка кодом, без захода в кнопки.
+    if (isLocale(argument.toLowerCase())) {
+      const next = argument.toLowerCase() as Locale
+      setLocale(user.id, next)
+      await ctx.reply(t(next, 'settings.languageSet', { name: LOCALE_NAMES[next] }), {
+        parse_mode: 'HTML',
+        reply_markup: mainKeyboard(next),
+      })
+      return
+    }
+
     const code = argument.toUpperCase()
     if (isValidCurrency(code)) {
       setBaseCurrency(user.id, code)
@@ -597,21 +665,28 @@ bot.command('settings', async (ctx) => {
     return
   }
 
+  const L = localeOf(user)
   await ctx.reply(
     [
-      '<b>Настройки</b>',
+      t(L, 'settings.title'),
       '',
-      `🌍 Часовой пояс: <b>${esc(user.timezone)}</b> (${utcOffsetLabel(user.timezone)})`,
-      `💰 Валюта отчётов: <b>${esc(user.baseCurrency)}</b>`,
+      t(L, 'settings.language', { name: LOCALE_NAMES[L] }),
+      t(L, 'settings.timezone', {
+        zone: esc(user.timezone),
+        offset: utcOffsetLabel(user.timezone),
+      }),
+      t(L, 'settings.currency', { code: esc(user.baseCurrency) }),
       '',
-      'От часового пояса зависит, что считать «сегодня».',
+      t(L, 'settings.whyTimezone'),
     ].join('\n'),
     {
       parse_mode: 'HTML',
       reply_markup: new InlineKeyboard()
-        .text('Сменить часовой пояс', 'settz')
+        .text(t(L, 'btn.changeLanguage'), 'setlang')
         .row()
-        .text('Сменить валюту', 'setcur'),
+        .text(t(L, 'btn.changeTimezone'), 'settz')
+        .row()
+        .text(t(L, 'btn.changeCurrency'), 'setcur'),
     },
   )
 })
@@ -624,6 +699,7 @@ async function saveExpenseFromText(ctx: Context, user: User, text: string) {
   // Запоминаем ДО записи: addExpense проставит отметку о первой трате,
   // а нам надо знать, была ли она первой именно сейчас.
   const wasFirstEver = !user.firstExpenseAt
+  const L = localeOf(user)
   const entries = splitEntries(text)
   const results = []
 
@@ -647,9 +723,13 @@ async function saveExpenseFromText(ctx: Context, user: User, text: string) {
     const first = failures[0]!
     await ctx.reply(
       [
-        explainFailure(first.reason),
+        explainFailure(first.reason, L),
         '',
-        'Примеры: <code>кофе 350</code>, <code>такси 900 работа</code>, <code>вчера продукты 1.5к</code>.',
+        t(L, 'parse.examples', {
+          e1: EXAMPLES[L].one,
+          e2: EXAMPLES[L].two,
+          e3: EXAMPLES[L].three,
+        }),
       ].join('\n'),
       { parse_mode: 'HTML' },
     )
@@ -664,18 +744,19 @@ async function saveExpenseFromText(ctx: Context, user: User, text: string) {
 
     const note =
       rateSource === 'unknown'
-        ? `Курс ${expense.currency} неизвестен — сумма учтена как есть. Поправьте в панели.`
+        ? t(L, 'rate.unknown', { currency: expense.currency })
         : rateSource === 'offline'
-          ? 'Курс взят из встроенной таблицы: сети не было.'
+          ? t(L, 'rate.offline')
           : undefined
 
     const message = await ctx.reply(
-      expenseCard(expense, user.timezone, totals.totalMinor, totals.count, user.baseCurrency, note),
+      expenseCard(expense, user.timezone, totals.totalMinor, totals.count, user.baseCurrency, L, note),
       {
         parse_mode: 'HTML',
         reply_markup: expenseKeyboard(
           expense,
           classification.status === 'ambiguous' ? classification.suggestions : [],
+          L,
         ),
       },
     )
@@ -684,7 +765,7 @@ async function saveExpenseFromText(ctx: Context, user: User, text: string) {
     linkExpenseMessage(user.id, expense.id, ctx.chat?.id ?? null, message.message_id)
 
     if (limitWarning) {
-      await ctx.reply(limitMessage(limitWarning), { parse_mode: 'HTML' })
+      await ctx.reply(limitMessage(limitWarning, L), { parse_mode: 'HTML' })
     }
   }
 
@@ -693,12 +774,7 @@ async function saveExpenseFromText(ctx: Context, user: User, text: string) {
   if (wasFirstEver && results.some((r) => r.ok)) {
     const panel = panelReply(user.id)
     await ctx.reply(
-      [
-        'Готово — первая трата записана.',
-        '',
-        'Итоги: /today, /week, /month.',
-        'Графики по дням и категориям — в панели.',
-      ].join('\n') + panel.extraText,
+      [t(L, 'first.done'), '', t(L, 'first.reports'), t(L, 'first.panel')].join('\n') + panel.extraText,
       {
         parse_mode: 'HTML',
         reply_markup: panel.keyboard,
@@ -725,9 +801,10 @@ bot.on('edited_message:text', async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
 
+  const L = localeOf(user)
   const parsed = parseExpense(ctx.editedMessage.text, user.baseCurrency)
   if (!parsed.ok) {
-    await ctx.reply(explainFailure(parsed.reason))
+    await ctx.reply(explainFailure(parsed.reason, L))
     return
   }
 
@@ -744,8 +821,16 @@ bot.on('edited_message:text', async (ctx) => {
 
   const totals = todayTotals(user)
   await ctx.reply(
-    expenseCard(updated, user.timezone, totals.totalMinor, totals.count, user.baseCurrency, 'Обновил по вашей правке.'),
-    { parse_mode: 'HTML', reply_markup: expenseKeyboard(updated) },
+    expenseCard(
+      updated,
+      user.timezone,
+      totals.totalMinor,
+      totals.count,
+      user.baseCurrency,
+      L,
+      t(L, 'card.editedByYou'),
+    ),
+    { parse_mode: 'HTML', reply_markup: expenseKeyboard(updated, [], L) },
   )
 })
 
@@ -773,12 +858,13 @@ bot.on('message:photo', async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
 
+  const L = localeOf(user)
   if (!isOcrEnabled()) {
-    await ctx.reply('Распознавание чеков выключено. Напишите трату текстом: «продукты 350».')
+    await ctx.reply(t(L, 'receipt.off', { example: EXAMPLES[L].one }))
     return
   }
 
-  const notice = await ctx.reply('Читаю чек…')
+  const notice = await ctx.reply(t(L, 'receipt.reading'))
 
   try {
     // Берём самый крупный вариант: мелкий эскиз распознаётся заметно хуже.
@@ -797,7 +883,7 @@ bot.on('message:photo', async (ctx) => {
       await ctx.api.editMessageText(
         ctx.chat.id,
         notice.message_id,
-        'Сумму на чеке разобрать не вышло. Напишите её текстом: «продукты 350».',
+        t(L, 'receipt.failed', { example: EXAMPLES[L].one }),
       )
       return
     }
@@ -816,11 +902,11 @@ bot.on('message:photo', async (ctx) => {
     rememberCaption(String(notice.message_id), caption)
 
     const lines = [
-      'Нашёл на чеке. Какая сумма — трата?',
+      t(L, 'receipt.question'),
       '',
       ...result.candidates.map((c) => `• <b>${formatMoney(toMinor(c.amount, user.baseCurrency), user.baseCurrency)}</b> — <i>${esc(c.line.slice(0, 60))}</i>`),
       '',
-      'Если ни одна не подходит — просто напишите сумму текстом.',
+      t(L, 'receipt.hint'),
     ]
 
     await ctx.api.editMessageText(ctx.chat.id, notice.message_id, lines.join('\n'), {
@@ -833,7 +919,7 @@ bot.on('message:photo', async (ctx) => {
       .editMessageText(
         ctx.chat.id,
         notice.message_id,
-        'Не получилось прочитать чек. Напишите трату текстом: «продукты 350».',
+        t(L, 'receipt.error', { example: EXAMPLES[L].one }),
       )
       .catch(() => undefined)
   }
@@ -849,10 +935,11 @@ bot.callbackQuery(/^ocr:(\d+)$/, async (ctx) => {
     return
   }
 
+  const L = localeOf(user)
   const remembered = ctx.callbackQuery.message
     ? receiptCaptions.get(String(ctx.callbackQuery.message.message_id))
     : undefined
-  const description = remembered?.text || 'Чек'
+  const description = remembered?.text || t(L, 'receipt.word')
 
   const parsed = parseExpense(
     `${description} ${fromMinor(minor, user.baseCurrency)}`.trim(),
@@ -876,15 +963,19 @@ bot.callbackQuery(/^ocr:(\d+)$/, async (ctx) => {
       totals.totalMinor,
       totals.count,
       user.baseCurrency,
-      'Сумма с чека. Категорию можно поправить кнопкой.',
+      L,
+      t(L, 'card.fromReceipt'),
     ),
-    { parse_mode: 'HTML', reply_markup: expenseKeyboard(saved.expense, saved.classification.suggestions) },
+    {
+      parse_mode: 'HTML',
+      reply_markup: expenseKeyboard(saved.expense, saved.classification.suggestions, L),
+    },
   )
   if (ctx.callbackQuery.message) {
     linkExpenseMessage(user.id, saved.expense.id, ctx.chat?.id ?? null, ctx.callbackQuery.message.message_id)
   }
   if (saved.limitWarning) {
-    await ctx.reply(limitMessage(saved.limitWarning), { parse_mode: 'HTML' })
+    await ctx.reply(limitMessage(saved.limitWarning, L), { parse_mode: 'HTML' })
   }
   await ctx.answerCallbackQuery({ text: 'Записал' })
 })
@@ -895,47 +986,67 @@ bot.callbackQuery(/^ocr:(\d+)$/, async (ctx) => {
 
 bot.callbackQuery('noop', (ctx) => ctx.answerCallbackQuery())
 
+bot.callbackQuery('setlang', async (ctx) => {
+  const user = currentUser(ctx)
+  if (!user) return
+  const L = localeOf(user)
+  await ctx.editMessageText(t(L, 'settings.pickLanguage'), {
+    parse_mode: 'HTML',
+    reply_markup: languageKeyboard(L),
+  })
+  await ctx.answerCallbackQuery()
+})
+
+bot.callbackQuery(/^lang:([a-z]{2})$/, async (ctx) => {
+  const user = currentUser(ctx)
+  if (!user) return
+  const code = ctx.match[1]!
+  if (!isLocale(code) || !setLocale(user.id, code)) {
+    await ctx.answerCallbackQuery({ text: '?' })
+    return
+  }
+  // Ответ уже на новом языке — иначе смена выглядит как будто не сработала.
+  await ctx.editMessageText(t(code, 'settings.languageSet', { name: LOCALE_NAMES[code] }), {
+    parse_mode: 'HTML',
+  })
+  // Клавиатура подписана на прежнем языке: присылаем новую.
+  await ctx.reply(t(code, 'start.buttons'), { reply_markup: mainKeyboard(code) })
+  await ctx.answerCallbackQuery({ text: LOCALE_NAMES[code] })
+})
+
 bot.callbackQuery('settz', async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
-  await ctx.editMessageText(
-    ['<b>Часовой пояс</b>', '', 'Выберите город — по нему считаются «сегодня», неделя и месяц.'].join('\n'),
-    { parse_mode: 'HTML', reply_markup: timezoneKeyboard(user.timezone) },
-  )
+  await ctx.editMessageText(t(localeOf(user), 'settings.pickTimezone'), {
+    parse_mode: 'HTML',
+    reply_markup: timezoneKeyboard(user.timezone),
+  })
   await ctx.answerCallbackQuery()
 })
 
 bot.callbackQuery('setcur', async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
-  await ctx.editMessageText(
-    [
-      '<b>Валюта отчётов</b>',
-      '',
-      'Траты в других валютах пересчитываются в неё по курсу на день траты.',
-      'Нужной нет? Напишите код: <code>/settings GBP</code>',
-    ].join('\n'),
-    { parse_mode: 'HTML', reply_markup: currencyKeyboard(user.baseCurrency) },
-  )
+  await ctx.editMessageText(t(localeOf(user), 'settings.pickCurrency'), {
+    parse_mode: 'HTML',
+    reply_markup: currencyKeyboard(user.baseCurrency),
+  })
   await ctx.answerCallbackQuery()
 })
 
 bot.callbackQuery(/^tz:([A-Za-z_]+\/[A-Za-z_]+)$/, async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
+  const L = localeOf(user)
   const zone = safeTimeZone(ctx.match[1]!, '')
   if (!zone) {
-    await ctx.answerCallbackQuery({ text: 'Неизвестная зона' })
+    await ctx.answerCallbackQuery({ text: t(L, 'settings.unknownZone') })
     return
   }
   setTimezone(user.id, zone)
   const city = TIMEZONE_CHOICES.find(([, z]) => z === zone)?.[0] ?? zone
   await ctx.editMessageText(
-    [
-      `🌍 Часовой пояс: <b>${esc(city)}</b> (${utcOffsetLabel(zone)})`,
-      '',
-      'Теперь «сегодня», неделя и месяц считаются по нему.',
-    ].join('\n'),
+    t(L, 'settings.timezoneSet', { city: esc(city), offset: utcOffsetLabel(zone) }),
     { parse_mode: 'HTML' },
   )
   await ctx.answerCallbackQuery({ text: city })
@@ -944,20 +1055,16 @@ bot.callbackQuery(/^tz:([A-Za-z_]+\/[A-Za-z_]+)$/, async (ctx) => {
 bot.callbackQuery(/^cur:([A-Z]{3})$/, async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
+  const L = localeOf(user)
   const code = ctx.match[1]!
   if (!isValidCurrency(code)) {
-    await ctx.answerCallbackQuery({ text: 'Неизвестная валюта' })
+    await ctx.answerCallbackQuery({ text: t(L, 'settings.unknownCurrency') })
     return
   }
   setBaseCurrency(user.id, code)
-  await ctx.editMessageText(
-    [
-      `💰 Валюта отчётов: <b>${esc(code)}</b>`,
-      '',
-      'Уже записанные траты остаются в валюте ввода — пересчёт идёт по курсу на день траты.',
-    ].join('\n'),
-    { parse_mode: 'HTML' },
-  )
+  await ctx.editMessageText(t(L, 'settings.currencySet', { code: esc(code) }), {
+    parse_mode: 'HTML',
+  })
   await ctx.answerCallbackQuery({ text: code })
 })
 
@@ -970,7 +1077,7 @@ bot.callbackQuery(/^catmenu:([0-9a-z]+):(\d+)$/i, async (ctx) => {
     await ctx.answerCallbackQuery({ text: 'Трата не найдена' })
     return
   }
-  await ctx.editMessageReplyMarkup({ reply_markup: categoryKeyboard(id, page) })
+  await ctx.editMessageReplyMarkup({ reply_markup: categoryKeyboard(id, page, localeOf(user)) })
   await ctx.answerCallbackQuery()
 })
 
@@ -982,7 +1089,7 @@ bot.callbackQuery(/^card:([0-9a-z]+)$/i, async (ctx) => {
     await ctx.answerCallbackQuery({ text: 'Трата не найдена' })
     return
   }
-  await ctx.editMessageReplyMarkup({ reply_markup: expenseKeyboard(expense) })
+  await ctx.editMessageReplyMarkup({ reply_markup: expenseKeyboard(expense, [], localeOf(user)) })
   await ctx.answerCallbackQuery()
 })
 
@@ -991,6 +1098,7 @@ bot.callbackQuery(/^cat:([0-9a-z]+):([a-z_]+)$/i, async (ctx) => {
   if (!user) return
   const [, id, slug] = ctx.match
 
+  const L = localeOf(user)
   const existing = getExpense(user.id, id!)
   if (!existing) {
     await ctx.answerCallbackQuery({ text: 'Трата не найдена' })
@@ -1000,7 +1108,7 @@ bot.callbackQuery(/^cat:([0-9a-z]+):([a-z_]+)$/i, async (ctx) => {
   // на попытку записать тот же текст отвечает «message is not modified»,
   // и кнопка крутится, будто всё сломалось.
   if (existing.category === slug) {
-    await ctx.answerCallbackQuery({ text: categoryBySlug(slug!).name })
+    await ctx.answerCallbackQuery({ text: categoryName(slug!, L) })
     return
   }
 
@@ -1019,11 +1127,12 @@ bot.callbackQuery(/^cat:([0-9a-z]+):([a-z_]+)$/i, async (ctx) => {
       totals.totalMinor,
       totals.count,
       user.baseCurrency,
-      'Запомнил: в следующий раз определю так же.',
+      L,
+      t(L, 'card.remembered'),
     ),
-    { parse_mode: 'HTML', reply_markup: expenseKeyboard(updated) },
+    { parse_mode: 'HTML', reply_markup: expenseKeyboard(updated, [], L) },
   )
-  await ctx.answerCallbackQuery({ text: `${category.emoji} ${category.name}` })
+  await ctx.answerCallbackQuery({ text: `${category.emoji} ${categoryName(slug!, L)}` })
 })
 
 bot.callbackQuery(/^del:([0-9a-z]+)$/i, async (ctx) => {
@@ -1036,7 +1145,7 @@ bot.callbackQuery(/^del:([0-9a-z]+)$/i, async (ctx) => {
   }
   // Сообщение не удаляем: Bot API разрешает это только первые 48 часов,
   // а переписать собственную карточку можно всегда.
-  await ctx.editMessageText(deletedCard(deleted), {
+  await ctx.editMessageText(deletedCard(deleted, localeOf(user)), {
     parse_mode: 'HTML',
     reply_markup: undoKeyboard(deleted.id),
   })
@@ -1053,8 +1162,16 @@ bot.callbackQuery(/^undo:([0-9a-z]+)$/i, async (ctx) => {
   }
   const totals = todayTotals(user)
   await ctx.editMessageText(
-    expenseCard(restored, user.timezone, totals.totalMinor, totals.count, user.baseCurrency, 'Вернул.'),
-    { parse_mode: 'HTML', reply_markup: expenseKeyboard(restored) },
+    expenseCard(
+      restored,
+      user.timezone,
+      totals.totalMinor,
+      totals.count,
+      user.baseCurrency,
+      localeOf(user),
+      t(localeOf(user), 'card.restored'),
+    ),
+    { parse_mode: 'HTML', reply_markup: expenseKeyboard(restored, [], localeOf(user)) },
   )
   await ctx.answerCallbackQuery({ text: 'Вернул' })
 })

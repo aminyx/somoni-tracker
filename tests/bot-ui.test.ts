@@ -208,21 +208,49 @@ test('предупреждение о лимите различает 80% и и�
   assert.match(at100, /лимит исчерпан/)
 })
 
-test('склонение числительных', () => {
-  const forms: [string, string, string] = ['трата', 'траты', 'трат']
-  assert.equal(plural(1, forms), 'трата')
-  assert.equal(plural(2, forms), 'траты')
-  assert.equal(plural(5, forms), 'трат')
-  assert.equal(plural(11, forms), 'трат')
-  assert.equal(plural(21, forms), 'трата')
-  assert.equal(plural(0, forms), 'трат')
+test('склонение числительных берётся из словаря языка', () => {
+  assert.equal(plural('ru', 'plural.expense', 1), 'трата')
+  assert.equal(plural('ru', 'plural.expense', 2), 'траты')
+  assert.equal(plural('ru', 'plural.expense', 5), 'трат')
+  assert.equal(plural('ru', 'plural.expense', 11), 'трат')
+  assert.equal(plural('ru', 'plural.expense', 21), 'трата')
+  assert.equal(plural('ru', 'plural.expense', 0), 'трат')
+  // В таджикском форма одна при любом числе.
+  assert.equal(plural('tg', 'plural.expense', 1), plural('tg', 'plural.expense', 7))
+  assert.equal(plural('en', 'plural.expense', 1), 'expense')
+  assert.equal(plural('en', 'plural.expense', 3), 'expenses')
 })
 
 test('время подписывается словами «сегодня» и «вчера»', () => {
   const now = Date.UTC(2026, 8, 3, 12, 0)
-  assert.match(humanTime(Date.UTC(2026, 8, 3, 9, 5), TZ, now), /^сегодня 14:05$/)
-  assert.match(humanTime(Date.UTC(2026, 8, 2, 9, 5), TZ, now), /^вчера 14:05$/)
-  assert.match(humanTime(Date.UTC(2026, 7, 20, 9, 5), TZ, now), /^20 августа, 14:05$/)
+  assert.match(humanTime(Date.UTC(2026, 8, 3, 9, 5), TZ, 'ru', now), /^сегодня 14:05$/)
+  assert.match(humanTime(Date.UTC(2026, 8, 2, 9, 5), TZ, 'ru', now), /^вчера 14:05$/)
+  assert.match(humanTime(Date.UTC(2026, 7, 20, 9, 5), TZ, 'ru', now), /^20 августа, 14:05$/)
+})
+
+test('время подписывается на языке пользователя', () => {
+  const now = Date.UTC(2026, 8, 3, 12, 0)
+  assert.match(humanTime(Date.UTC(2026, 8, 3, 9, 5), TZ, 'tg', now), /имрӯз/)
+  assert.match(humanTime(Date.UTC(2026, 8, 2, 9, 5), TZ, 'en', now), /yesterday/)
+  assert.match(humanTime(Date.UTC(2026, 7, 20, 9, 5), TZ, 'en', now), /August/)
+})
+
+test('отчёт и карточка выходят на всех трёх языках', () => {
+  for (const locale of ['ru', 'tg', 'en'] as const) {
+    const card = expenseCard(makeExpense(), TZ, 40660, 8, 'TJS', locale)
+    const text = report(makeSummary(), TZ, null, locale)
+    // Ни одного непереведённого ключа наружу.
+    assert.ok(!/[a-z]+\.[a-zA-Z]+(?![^<]*>)/.test(card.replace(/tg-emoji|emoji-id/g, '')) ||
+      !card.includes('card.'), `${locale}: ключ вместо текста в карточке`)
+    assert.ok(!text.includes('report.'), `${locale}: ключ вместо текста в отчёте`)
+    assert.ok(card.length > 20 && text.length > 20)
+    // Теги остаются парными на любом языке.
+    for (const tag of ['b', 'i', 'code', 'blockquote']) {
+      const open = (text.match(new RegExp(`<${tag}[ >]`, 'g')) ?? []).length
+      const close = (text.match(new RegExp(`</${tag}>`, 'g')) ?? []).length
+      assert.equal(open, close, `${locale}: непарный <${tag}> в отчёте`)
+    }
+  }
 })
 
 test('полоса доли рисуется пропорционально', () => {

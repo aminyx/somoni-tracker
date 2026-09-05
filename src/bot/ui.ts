@@ -1,14 +1,19 @@
 /**
  * Тексты и клавиатуры бота.
  *
- * Правило одно: цифры в боте и цифры в панели считаются одним и тем же
+ * Правило первое: цифры в боте и цифры в панели считаются одним и тем же
  * кодом (src/lib/stats.ts). Если бот и панель разойдутся хоть на сомони,
  * доверия к продукту не останется.
+ *
+ * Правило второе: ни одной строки для человека прямо здесь — всё через
+ * словарь из src/lib/i18n.ts. Иначе таджикский появлялся бы кусками:
+ * часть переведена, часть нет, и это заметнее, чем полное отсутствие языка.
  */
 import { InlineKeyboard } from 'grammy'
-import { CATEGORIES, categoryBySlug } from '../lib/categories'
+import { CATEGORIES, categoryBySlug, categoryName } from '../lib/categories'
 import type { Expense } from '../lib/db/schema'
 import type { LimitWarning } from '../lib/expenses'
+import { MONTHS_GENITIVE, MONTHS_NOMINATIVE, t, tPlural, type Locale } from '../lib/i18n'
 import { formatMoney } from '../lib/money'
 import type { PeriodSummary } from '../lib/stats'
 import { dayKey, partsInZone, type Period } from '../lib/time'
@@ -16,34 +21,20 @@ import { dayKey, partsInZone, type Period } from '../lib/time'
 /**
  * Премиум-эмодзи.
  *
- * Bot API: «Custom emoji entities can only be used by bots that purchased
- * additional usernames on Fragment or in the messages directly sent by the
- * bot to private, group and supergroup chats if the owner of the bot has
- * a Telegram Premium subscription.»
+ * Bot API разрешает их в личных чатах, если Telegram Premium есть
+ * у ВЛАДЕЛЬЦА бота, а не у получателя. Проверено живым запросом.
+ * Внутри тега всегда стоит обычная эмодзи — её видят без Premium,
+ * поэтому хуже никому не становится.
  *
- * Условие — Premium у ВЛАДЕЛЬЦА бота, а не у получателя. Проверено живым
- * запросом: сообщение принимается. Получателю без Premium показывается
- * обычная эмодзи из тела тега, поэтому хуже никому не становится.
- *
- * Единственная зависимость: если Premium у владельца закончится, Telegram
- * начнёт отклонять такие сообщения. Поэтому эмодзи стоит ровно в одном
- * месте — в карточке траты, и заменить её обратно на «✅» это одна строка.
- *
- * Идентификаторы проверены через getCustomEmojiStickers: несуществующий
- * отрисовался бы пустым квадратом.
+ * Идентификаторы получены через getStickerSet набора RestrictedEmoji,
+ * а не подобраны наугад: несуществующий отрисовался бы пустым квадратом.
  */
-const PREMIUM = {
-  check: '5427009714745517609',
-} as const
+const PREMIUM_CHECK = '5427009714745517609'
 
 /**
- * Премиум-эмодзи категорий. Идентификаторы взяты не наугад: набор
- * RestrictedEmoji прочитан через getStickerSet, и каждый id соответствует
- * ровно той эмодзи, что стоит у категории в справочнике.
- *
- * Для четырёх категорий подходящей премиум-эмодзи в наборе не нашлось —
- * они остаются обычными. Это заметно только рядом, и лучше так, чем
- * подставлять чужой символ ради единообразия.
+ * Премиум-эмодзи категорий. Для одежды подходящей в наборе не нашлось —
+ * она остаётся обычной. Подставлять туда чужой символ ради единообразия
+ * не стоит: рядом это заметно и читается как ошибка.
  */
 const PREMIUM_CATEGORY: Record<string, string> = {
   groceries: '5431499171045581032',
@@ -60,30 +51,26 @@ const PREMIUM_CATEGORY: Record<string, string> = {
   other: '5433653135799228968',
 }
 
-/**
- * Эмодзи категории: премиум там, где нашлась, иначе обычная.
- * Обычная всегда лежит внутри тега — её увидят без Telegram Premium.
- */
+function tgEmoji(id: string, fallback: string): string {
+  return `<tg-emoji emoji-id="${id}">${fallback}</tg-emoji>`
+}
+
+/** Эмодзи категории: премиум там, где нашлась, иначе обычная. */
 function categoryEmoji(slug: string, fallback: string): string {
   const id = PREMIUM_CATEGORY[slug]
   return id ? tgEmoji(id, fallback) : fallback
 }
 
-function tgEmoji(id: string, fallback: string): string {
-  return `<tg-emoji emoji-id="${id}">${fallback}</tg-emoji>`
-}
-
 /** Полоса доли: та же картина, что на графике в панели, только текстом. */
 export function shareBar(percent: number, width = 10): string {
-  const filled = Math.max(0, Math.min(width, Math.round((percent / 100) * width)))
+  const safe = Number.isFinite(percent) ? percent : 0
+  const filled = Math.max(0, Math.min(width, Math.round((safe / 100) * width)))
   return '▰'.repeat(filled) + '▱'.repeat(width - filled)
 }
 
 /**
  * Проставляет цвет кнопке по её подписи.
- *
- * InlineKeyboard из grammY не принимает style в text(), поэтому поле
- * дописывается к уже собранной кнопке — тип в @grammyjs/types его знает.
+ * Поле style появилось в Bot API 10.3 (24 августа 2026).
  */
 export function applyStyle(
   keyboard: InlineKeyboard,
@@ -104,51 +91,46 @@ export function esc(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-const MONTHS_GENITIVE = [
-  'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
-]
-
-const MONTHS_NOMINATIVE = [
-  'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
-  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
-]
-
 /** «сегодня 14:05», «вчера 09:30», «2 сентября, 18:40». */
-export function humanTime(instant: number, timezone: string, now = Date.now()): string {
+export function humanTime(
+  instant: number,
+  timezone: string,
+  locale: Locale = 'ru',
+  now = Date.now(),
+): string {
   const p = partsInZone(instant, timezone)
   const time = `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`
   const key = dayKey(instant, timezone)
-  const todayKey = dayKey(now, timezone)
-  const yesterdayKey = dayKey(now - 86_400_000, timezone)
 
-  if (key === todayKey) return `сегодня ${time}`
-  if (key === yesterdayKey) return `вчера ${time}`
-  return `${p.day} ${MONTHS_GENITIVE[p.month - 1]}, ${time}`
+  if (key === dayKey(now, timezone)) return t(locale, 'time.today', { time })
+  if (key === dayKey(now - 86_400_000, timezone)) return t(locale, 'time.yesterday', { time })
+  return t(locale, 'time.date', {
+    day: p.day,
+    month: MONTHS_GENITIVE[locale][p.month - 1]!,
+    time,
+  })
 }
 
-/** «1–3 сентября», «сентябрь 2026» — подпись периода без слова «неделя». */
-export function periodLabel(period: Period, summary: PeriodSummary, timezone: string): string {
+/** «1–3 сентября», «Сентябрь 2026» — подпись периода датами, а не словом. */
+export function periodLabel(
+  period: Period,
+  summary: PeriodSummary,
+  timezone: string,
+  locale: Locale = 'ru',
+): string {
   const from = partsInZone(summary.range.start, timezone)
   const to = partsInZone(summary.range.end - 1000, timezone)
+  const gen = MONTHS_GENITIVE[locale]
 
-  if (period === 'day') return `${from.day} ${MONTHS_GENITIVE[from.month - 1]}`
-  if (period === 'month') return `${MONTHS_NOMINATIVE[from.month - 1]} ${from.year}`
-  if (from.month === to.month) {
-    return `${from.day}–${to.day} ${MONTHS_GENITIVE[from.month - 1]}`
-  }
-  return `${from.day} ${MONTHS_GENITIVE[from.month - 1]} — ${to.day} ${MONTHS_GENITIVE[to.month - 1]}`
+  if (period === 'day') return `${from.day} ${gen[from.month - 1]}`
+  if (period === 'month') return `${MONTHS_NOMINATIVE[locale][from.month - 1]} ${from.year}`
+  if (from.month === to.month) return `${from.day}–${to.day} ${gen[from.month - 1]}`
+  return `${from.day} ${gen[from.month - 1]} — ${to.day} ${gen[to.month - 1]}`
 }
 
-const PLURAL_EXPENSE: [string, string, string] = ['трата', 'траты', 'трат']
-
-export function plural(count: number, forms: [string, string, string]): string {
-  const n = Math.abs(count) % 100
-  const n1 = n % 10
-  if (n > 10 && n < 20) return forms[2]
-  if (n1 > 1 && n1 < 5) return forms[1]
-  if (n1 === 1) return forms[0]
-  return forms[2]
+/** Склонение по словарю: формы лежат в ключах plural.* */
+export function plural(locale: Locale, key: string, count: number): string {
+  return tPlural(locale, key, count)
 }
 
 /** Карточка сохранённой траты. */
@@ -158,27 +140,38 @@ export function expenseCard(
   todayTotalMinor: number,
   todayCount: number,
   baseCurrency: string,
+  locale: Locale = 'ru',
   note?: string,
 ): string {
   const category = categoryBySlug(expense.category)
+  const name = categoryName(expense.category, locale)
   const amount = formatMoney(expense.amountMinor, expense.currency)
-  const title = expense.description ? esc(expense.description) : 'Без описания'
+  const title = expense.description ? esc(expense.description) : t(locale, 'card.noDescription')
 
   const lines = [
-    `${tgEmoji(PREMIUM.check, '✅')} <b>${title}</b> · ${amount}`,
-    `<blockquote>${categoryEmoji(expense.category, category.emoji)} ${category.name}`,
-    `${humanTime(expense.spentAt, timezone)}</blockquote>`,
+    `${tgEmoji(PREMIUM_CHECK, '✅')} <b>${title}</b> · ${amount}`,
+    `<blockquote>${categoryEmoji(expense.category, category.emoji)} ${name}`,
+    `${humanTime(expense.spentAt, timezone, locale)}</blockquote>`,
   ]
 
   // Трата в другой валюте: показываем и пересчёт, иначе итог месяца
   // выглядит «неправильным».
   if (expense.currency !== baseCurrency) {
-    lines.push(`≈ ${formatMoney(expense.baseMinor, baseCurrency)} по курсу ${expense.rate.toFixed(4)}`)
+    lines.push(
+      t(locale, 'card.converted', {
+        amount: formatMoney(expense.baseMinor, baseCurrency),
+        rate: expense.rate.toFixed(4),
+      }),
+    )
   }
 
   lines.push('')
   lines.push(
-    `Сегодня: <b>${formatMoney(todayTotalMinor, baseCurrency)}</b> · ${todayCount} ${plural(todayCount, PLURAL_EXPENSE)}`,
+    t(locale, 'card.today', {
+      total: formatMoney(todayTotalMinor, baseCurrency),
+      count: todayCount,
+      plural: plural(locale, 'plural.expense', todayCount),
+    }),
   )
 
   if (note) lines.push('', `<i>${esc(note)}</i>`)
@@ -186,44 +179,53 @@ export function expenseCard(
 }
 
 /** Та же карточка после удаления — сообщение не удаляем, а переписываем. */
-export function deletedCard(expense: Expense): string {
+export function deletedCard(expense: Expense, locale: Locale = 'ru'): string {
   const amount = formatMoney(expense.amountMinor, expense.currency)
-  const title = expense.description ? esc(expense.description) : 'Без описания'
-  return `🗑 <s>${title} — ${amount}</s>\nУдалено.`
+  const title = expense.description ? esc(expense.description) : t(locale, 'card.noDescription')
+  return `🗑 <s>${title} — ${amount}</s>\n${t(locale, 'card.deleted')}`
 }
 
 /** Кнопки под карточкой траты. */
-export function expenseKeyboard(expense: Expense, suggestions: string[] = []): InlineKeyboard {
+export function expenseKeyboard(
+  expense: Expense,
+  suggestions: string[] = [],
+  locale: Locale = 'ru',
+): InlineKeyboard {
   const keyboard = new InlineKeyboard()
 
   // Спорная категория: две кнопки в одно касание, без захода в меню.
   const chips = suggestions.filter((slug) => slug !== expense.category).slice(0, 2)
   if (chips.length > 0) {
     for (const slug of chips) {
-      const category = categoryBySlug(slug)
-      keyboard.text(`${category.emoji} ${category.name}`, `cat:${expense.id}:${slug}`)
+      keyboard.text(
+        `${categoryBySlug(slug).emoji} ${categoryName(slug, locale)}`,
+        `cat:${expense.id}:${slug}`,
+      )
     }
     keyboard.row()
   }
 
-  // Цвет кнопки (Bot API 10.3 от 24 августа 2026): удаление красным —
-  // единственное необратимое действие на карточке, и его видно сразу.
+  const deleteLabel = t(locale, 'btn.delete')
   keyboard
-    .text('Категория', `catmenu:${expense.id}:0`)
-    .text('Удалить', `del:${expense.id}`)
-  applyStyle(keyboard, 'Удалить', 'danger')
+    .text(t(locale, 'btn.category'), `catmenu:${expense.id}:0`)
+    .text(deleteLabel, `del:${expense.id}`)
+  // Удаление красным: единственное необратимое действие на карточке.
+  applyStyle(keyboard, deleteLabel, 'danger')
   return keyboard
 }
 
 /** Меню выбора категории, две колонки, с постраничностью. */
-export function categoryKeyboard(expenseId: string, page = 0): InlineKeyboard {
+export function categoryKeyboard(expenseId: string, page = 0, locale: Locale = 'ru'): InlineKeyboard {
   const perPage = 8
   const pages = Math.ceil(CATEGORIES.length / perPage)
   const slice = CATEGORIES.slice(page * perPage, page * perPage + perPage)
 
   const keyboard = new InlineKeyboard()
   slice.forEach((category, index) => {
-    keyboard.text(`${category.emoji} ${category.name}`, `cat:${expenseId}:${category.slug}`)
+    keyboard.text(
+      `${category.emoji} ${categoryName(category.slug, locale)}`,
+      `cat:${expenseId}:${category.slug}`,
+    )
     if (index % 2 === 1) keyboard.row()
   })
   if (slice.length % 2 === 1) keyboard.row()
@@ -237,7 +239,7 @@ export function categoryKeyboard(expenseId: string, page = 0): InlineKeyboard {
       .text('›', `catmenu:${expenseId}:${next}`)
       .row()
   }
-  keyboard.text('← назад', `card:${expenseId}`)
+  keyboard.text(t(locale, 'btn.back'), `card:${expenseId}`)
   return keyboard
 }
 
@@ -246,16 +248,18 @@ export function report(
   summary: PeriodSummary,
   timezone: string,
   panelUrl: string | null,
+  locale: Locale = 'ru',
+  example = 'кофе 350',
 ): string {
-  const label = periodLabel(summary.period, summary, timezone)
+  const label = periodLabel(summary.period, summary, timezone, locale)
   const total = formatMoney(summary.totalMinor, summary.currency)
 
   if (summary.count === 0) {
     return [
       `<b>${label}</b>`,
       '',
-      'Пока пусто.',
-      'Напишите «кофе 350» — и трата появится здесь и в панели.',
+      t(locale, 'report.empty'),
+      t(locale, 'report.emptyHint', { example }),
     ].join('\n')
   }
 
@@ -267,15 +271,19 @@ export function report(
   const previous = summary.previousComparableMinor
   if (previous > 0) {
     const rounded = Math.round(((summary.totalMinor - previous) / previous) * 100)
-    const days = `${summary.elapsedDays} ${plural(summary.elapsedDays, ['день', 'дня', 'дней'])}`
-    const was = formatMoney(previous, summary.currency)
-    // Формулировка через тире, а не «к тем же N дням»: так не нужен
-    // дательный падеж, и число склоняется одинаково при любом значении.
-    const tail = `<i>за те же ${days} до этого — ${was}</i>`
+    const days = `${summary.elapsedDays} ${plural(locale, 'plural.day', summary.elapsedDays)}`
+    const tail = t(locale, 'report.tail', {
+      days,
+      amount: formatMoney(previous, summary.currency),
+    })
     lines.push(
       Math.abs(rounded) < 3
-        ? `≈ столько же · ${tail}`
-        : `${rounded > 0 ? '↑' : '↓'} ${Math.abs(rounded)}% · ${tail}`,
+        ? t(locale, 'report.same', { tail })
+        : t(locale, 'report.delta', {
+            arrow: rounded > 0 ? '↑' : '↓',
+            percent: Math.abs(rounded),
+            tail,
+          }),
     )
   }
 
@@ -287,59 +295,75 @@ export function report(
       const category = categoryBySlug(row.category)
       const amount = formatMoney(row.totalMinor, summary.currency)
       if (rows.length > 0) rows.push('')
-      rows.push(`${categoryEmoji(row.category, category.emoji)} ${category.name}`)
+      rows.push(
+        `${categoryEmoji(row.category, category.emoji)} ${categoryName(row.category, locale)}`,
+      )
       rows.push(`<code>${shareBar(row.share)}</code> ${amount} · ${Math.round(row.share)}%`)
     }
     if (summary.byCategory.length > 10) {
       const rest = summary.byCategory.slice(10)
       const restTotal = rest.reduce((acc, r) => acc + r.totalMinor, 0)
-      rows.push('', `📦 ещё ${rest.length} — ${formatMoney(restTotal, summary.currency)}`)
+      rows.push(
+        '',
+        t(locale, 'report.more', {
+          count: rest.length,
+          amount: formatMoney(restTotal, summary.currency),
+        }),
+      )
     }
     lines.push('', `<blockquote expandable>${rows.join('\n')}</blockquote>`)
   }
 
-  const footer = [`${summary.count} ${plural(summary.count, PLURAL_EXPENSE)}`]
+  const footer = [`${summary.count} ${plural(locale, 'plural.expense', summary.count)}`]
   if (summary.period === 'month' && summary.averagePerDayMinor > 0) {
-    footer.push(`в среднем ${formatMoney(summary.averagePerDayMinor, summary.currency)} в день`)
+    footer.push(
+      t(locale, 'report.average', {
+        amount: formatMoney(summary.averagePerDayMinor, summary.currency),
+      }),
+    )
   }
   lines.push(footer.join(' · '))
 
-  if (panelUrl) lines.push('', 'Графики по дням — в панели.')
+  if (panelUrl) lines.push('', t(locale, 'report.charts'))
   return lines.join('\n')
 }
 
 /** Предупреждение о лимите. */
-export function limitMessage(warning: LimitWarning): string {
+export function limitMessage(warning: LimitWarning, locale: Locale = 'ru'): string {
   const category = categoryBySlug(warning.category)
+  const name = categoryName(warning.category, locale)
   const spent = formatMoney(warning.spentMinor, warning.currency)
   const limit = formatMoney(warning.limitMinor, warning.currency)
 
   if (warning.level === 100) {
-    return `🔴 ${category.emoji} <b>${category.name}</b>: лимит исчерпан.\nПотрачено ${spent} из ${limit}.`
+    return t(locale, 'limit.warn100', { emoji: category.emoji, name, spent, limit })
   }
-  const left = formatMoney(warning.limitMinor - warning.spentMinor, warning.currency)
-  return `🟡 ${category.emoji} <b>${category.name}</b>: потрачено ${spent} из ${limit}.\nОсталось ${left}.`
+  return t(locale, 'limit.warn80', {
+    emoji: category.emoji,
+    name,
+    spent,
+    limit,
+    left: formatMoney(warning.limitMinor - warning.spentMinor, warning.currency),
+  })
 }
 
-export const HELP = `<b>Как пользоваться</b>
-
-Просто напишите трату одной строкой:
-• <code>кофе 350</code>
-• <code>такси 900 работа</code>
-• <code>вчера продукты 1.5к</code>
-• <code>обед 45 usd</code>
-• <code>3 сентября аренда 2000</code>
-
-Категорию определю сам — если ошибусь, поправьте кнопкой под карточкой, и в следующий раз я запомню.
-
-<b>Команды</b>
-/today — итог за сегодня
-/week — за неделю (с понедельника)
-/month — за месяц
-/last — последние траты
-/panel — открыть веб-панель
-/limit — лимит по категории
-/export — выгрузить CSV
-/settings — часовой пояс и валюта
-/demo — заполнить примерами, чтобы посмотреть панель
-/help — эта справка`
+/** Справка «как писать» — собирается из словаря, живёт на трёх языках. */
+export function helpText(
+  locale: Locale,
+  examples: { one: string; two: string; three: string },
+): string {
+  return [
+    t(locale, 'help.title'),
+    '',
+    t(locale, 'help.intro'),
+    `• <code>${examples.one}</code>`,
+    `• <code>${examples.two}</code>`,
+    `• <code>${examples.three}</code>`,
+    `• <code>${t(locale, 'help.exampleCurrency')}</code>`,
+    '',
+    t(locale, 'help.category'),
+    '',
+    t(locale, 'help.commands'),
+    t(locale, 'help.list'),
+  ].join('\n')
+}

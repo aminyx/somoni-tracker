@@ -250,6 +250,14 @@ const ru: Dict = {
   'enter.deadTitle': 'Ссылка больше не работает',
   'enter.deadBody':
     'Ссылки живут десять минут и открываются один раз — так их бесполезно пересылать. Попросите у бота новую командой {command}.',
+
+  'help.title': '<b>Как пользоваться</b>',
+  'help.intro': 'Просто напишите трату одной строкой:',
+  'help.exampleCurrency': 'обед 45 usd',
+  'help.category': 'Категорию определю сам — если ошибусь, поправьте кнопкой под карточкой, и в следующий раз я запомню.',
+  'help.commands': '<b>Команды</b>',
+  'help.list': '/today — итог за сегодня\n/week — за неделю (с понедельника)\n/month — за месяц\n/last — последние траты\n/panel — открыть веб-панель\n/limit — лимит по категории\n/export — выгрузить CSV\n/settings — язык, часовой пояс и валюта\n/demo — заполнить примерами\n/help — эта справка',
+  'receipt.word': 'Чек',
 }
 
 /**
@@ -408,6 +416,14 @@ const tg: Dict = {
   'enter.button': 'Даромадан',
   'enter.deadTitle': 'Пайванд дигар кор намекунад',
   'enter.deadBody': 'Пайвандҳо даҳ дақиқа зиндаанд ва як бор кушода мешаванд — бинобар ин фиристодани онҳо бефоида аст. Аз бот бо фармони {command} пайванди нав пурсед.',
+
+  'help.title': '<b>Тарзи истифода</b>',
+  'help.intro': 'Танҳо харҷро бо як сатр нависед:',
+  'help.exampleCurrency': 'хӯроки нисфирӯзӣ 45 usd',
+  'help.category': 'Категорияро худам муайян мекунам — агар хато кунам, бо тугмаи зери корт ислоҳ кунед, ва дафъаи оянда дар хотир мегирам.',
+  'help.commands': '<b>Фармонҳо</b>',
+  'help.list': '/today — ҷамъбасти имрӯз\n/week — барои ҳафта (аз душанбе)\n/month — барои моҳ\n/last — харҷҳои охирин\n/panel — кушодани панел\n/limit — маҳдудият аз рӯи категория\n/export — баровардани CSV\n/settings — забон, минтақаи вақт ва асъор\n/demo — бо намунаҳо пур кардан\n/help — ҳамин роҳнамо',
+  'receipt.word': 'Чек',
 }
 
 /** Английский: две формы, третья повторяет вторую. */
@@ -563,6 +579,14 @@ const en: Dict = {
   'enter.button': 'Sign in',
   'enter.deadTitle': 'The link no longer works',
   'enter.deadBody': 'Links live ten minutes and open once — so forwarding them is pointless. Ask the bot for a new one with the {command} command.',
+
+  'help.title': '<b>How to use</b>',
+  'help.intro': 'Just write an expense on one line:',
+  'help.exampleCurrency': 'lunch 45 usd',
+  'help.category': 'I work out the category myself — if I get it wrong, fix it with the button under the card and I will remember next time.',
+  'help.commands': '<b>Commands</b>',
+  'help.list': '/today — today\'s total\n/week — this week (from Monday)\n/month — this month\n/last — recent expenses\n/panel — open the dashboard\n/limit — category limit\n/export — download CSV\n/settings — language, time zone and currency\n/demo — fill with examples\n/help — this help',
+  'receipt.word': 'Receipt',
 }
 
 const DICTS: Record<Locale, Dict> = { ru, tg, en }

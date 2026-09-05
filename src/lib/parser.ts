@@ -9,6 +9,7 @@
  *  • Дата в тексте («вчера», «01.09», «3 сентября») вырезается из описания.
  *  • Если разобрать не удалось, возвращается причина, а не молчаливый ноль.
  */
+import { EXAMPLES, t, type Locale } from './i18n'
 import { CURRENCIES, DEFAULT_CURRENCY, isValidCurrency } from './money'
 
 export type ParseFailure =
@@ -385,16 +386,16 @@ export function splitEntries(input: string): string[] {
     .filter((part) => part.length > 0)
 }
 
-/** Человеческое объяснение, почему не разобралось. */
-export function explainFailure(reason: ParseFailure): string {
+/** Человеческое объяснение, почему не разобралось — на языке пользователя. */
+export function explainFailure(reason: ParseFailure, locale: Locale = 'ru'): string {
   switch (reason) {
     case 'empty':
-      return 'Пустое сообщение.'
+      return t(locale, 'parse.empty')
     case 'no-amount':
-      return 'Не нашёл сумму. Напишите, например: «кофе 350».'
+      return t(locale, 'parse.noAmount', { example: EXAMPLES[locale].one })
     case 'amount-not-positive':
-      return 'Сумма должна быть больше нуля.'
+      return t(locale, 'parse.notPositive')
     case 'amount-too-large':
-      return 'Сумма слишком большая — похоже на опечатку.'
+      return t(locale, 'parse.tooLarge')
   }
 }

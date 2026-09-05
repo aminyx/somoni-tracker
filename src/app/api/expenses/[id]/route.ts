@@ -8,11 +8,12 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { isCategorySlug } from '@/lib/categories'
-import { deleteExpense, getExpense, restoreExpense, updateExpense } from '@/lib/expenses'
+import { deleteExpense, getExpense, localeOf, restoreExpense, updateExpense } from '@/lib/expenses'
 import { isValidCurrency } from '@/lib/money'
 import { editExpenseCard } from '@/lib/notify'
 import { currentUser } from '@/lib/session'
 import { deletedCard, expenseCard } from '@/bot/ui'
+import { t } from '@/lib/i18n'
 import { totalFor } from '@/lib/stats'
 import { rangeFor } from '@/lib/time'
 
@@ -64,7 +65,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       today.totalMinor,
       today.count,
       user.baseCurrency,
-      'Изменено в панели.',
+      localeOf(user),
+      t(localeOf(user), 'card.editedInPanel'),
     ),
   )
 
@@ -81,7 +83,7 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
 
   // Карточка в чате не должна врать после удаления в панели.
   // Не ждём ответа Telegram: трата уже удалена, а сообщение вторично.
-  void editExpenseCard(deleted.chatId, deleted.messageId, deletedCard(deleted))
+  void editExpenseCard(deleted.chatId, deleted.messageId, deletedCard(deleted, localeOf(user)))
 
   return NextResponse.json({ expense: deleted })
 }
