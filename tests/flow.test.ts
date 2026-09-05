@@ -237,11 +237,17 @@ test('ссылка входа одноразовая и превращается
   assert.equal(resolveSession(session.value), null)
 })
 
-test('новая ссылка гасит предыдущую', () => {
+test('прежние ссылки остаются рабочими: кнопка из /start не должна умирать', () => {
+  // Раньше новая ссылка гасила предыдущую, и обычный сценарий ломался:
+  // бот присылал кнопку в /start, человек писал трату, бот присылал
+  // подсказку с новой ссылкой — и кнопка из /start отвечала «не работает».
   const first = issueLoginToken(bob.id)
   const second = issueLoginToken(bob.id)
-  assert.equal(consumeLoginToken(first.token), null, 'старая ссылка должна перестать работать')
-  assert.equal(consumeLoginToken(second.token), bob.id)
+  assert.equal(consumeLoginToken(first.token), bob.id, 'первая ссылка должна работать')
+  assert.equal(consumeLoginToken(second.token), bob.id, 'вторая тоже')
+  // Но каждая — ровно один раз.
+  assert.equal(consumeLoginToken(first.token), null)
+  assert.equal(consumeLoginToken(second.token), null)
 })
 
 test('подделанное значение cookie не даёт доступа', () => {
@@ -252,4 +258,44 @@ test('подделанное значение cookie не даёт доступ�
 
 test('форматирование итога читается человеком', () => {
   assert.equal(formatMoney(125050, 'TJS'), '1 250,50 смн')
+})
+
+test('смена валюты отчётов пересчитывает уже записанное', async () => {
+  const { setBaseCurrency, getUser } = await import('../src/lib/expenses.ts')
+  const eva = ensureUser({ id: 1005, first_name: 'Ева' })
+  record(eva, 'продукты 100')
+  record(eva, 'подписка 10 usd')
+
+  const before = summarize(
+    { id: eva.id, timezone: eva.timezone, baseCurrency: 'TJS', weekStart: 1 },
+    'month',
+  ).totalMinor
+  // 100 сомони + 10 долларов ≈ 192 сомони
+  assert.ok(before > 18000 && before < 20000, `в сомони получилось ${before / 100}`)
+
+  const touched = setBaseCurrency(eva.id, 'USD')
+  assert.ok(touched >= 1, 'ни одна трата не пересчиталась')
+
+  const after = summarize(
+    { id: getUser(eva.id)!.id, timezone: eva.timezone, baseCurrency: 'USD', weekStart: 1 },
+    'month',
+  ).totalMinor
+  // Те же деньги в долларах: ~10,8 + 10 ≈ 21 доллар, а не 192.
+  assert.ok(after > 1500 && after < 2500, `в долларах получилось ${after / 100}, ожидалось около 21`)
+
+  // Сумма и валюта ввода не тронуты — это факт, а не пересчёт.
+  const rows = recentExpenses(eva.id, 10)
+  const usd = rows.find((r) => r.currency === 'USD')!
+  assert.equal(usd.amountMinor, 1000, 'исходная сумма изменилась')
+  assert.equal(usd.baseMinor, 1000, '10 долларов в долларах должны остаться 10')
+})
+
+test('слишком длинное описание обрезается, а не ломает карточку', () => {
+  const frank = ensureUser({ id: 1006, first_name: 'Франк' })
+  const long = 'очень '.repeat(120) + '500'
+  const parsed = parseExpense(long, frank.baseCurrency)
+  assert.equal(parsed.ok, true)
+  if (!parsed.ok) return
+  const { expense } = addExpense(frank, parsed.value, { source: 'bot' })
+  assert.ok(expense.description.length <= 200, `описание длиной ${expense.description.length}`)
 })

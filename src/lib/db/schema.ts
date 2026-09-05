@@ -25,6 +25,11 @@ export const users = sqliteTable('users', {
   username: text('username'),
   photoUrl: text('photo_url'),
   languageCode: text('language_code'),
+  /**
+   * Язык интерфейса: ru | tg | en. Выставляется при первом обращении
+   * по language_code из Telegram и меняется в настройках.
+   */
+  locale: text('locale').notNull().default('ru'),
   /** IANA-зона: от неё зависит, что такое «сегодня» */
   timezone: text('timezone').notNull().default('Asia/Dushanbe'),
   /**

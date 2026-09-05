@@ -180,6 +180,20 @@ export function resolveSpentAt(parsed: ParsedExpense, user: User, now = Date.now
   return now
 }
 
+/**
+ * Предел длины описания.
+ *
+ * Без него длинное сообщение раздувает карточку за лимит Telegram в 4096
+ * символов, и подтверждение не приходит вовсе: трата записана, ответа нет.
+ * Столько же стоит в схеме проверки на стороне панели.
+ */
+const MAX_DESCRIPTION = 200
+
+function trimDescription(text: string): string {
+  const clean = text.trim()
+  return clean.length <= MAX_DESCRIPTION ? clean : clean.slice(0, MAX_DESCRIPTION - 1) + '…'
+}
+
 export function addExpense(
   user: User,
   parsed: ParsedExpense,
@@ -206,7 +220,7 @@ export function addExpense(
     baseMinor,
     rate,
     category,
-    description: parsed.description,
+    description: trimDescription(parsed.description),
     spentAt: options.spentAt ?? resolveSpentAt(parsed, user, now),
     createdAt: now,
     updatedAt: now,
@@ -287,7 +301,7 @@ export function updateExpense(user: User, id: string, patch: ExpensePatch): Expe
       baseMinor,
       rate,
       category,
-      description: patch.description ?? current.description,
+      description: trimDescription(patch.description ?? current.description),
       spentAt: patch.spentAt ?? current.spentAt,
       updatedAt: Date.now(),
     })
@@ -458,9 +472,36 @@ export function setTimezone(userId: number, timezone: string): void {
     .run()
 }
 
-/** Меняет валюту отчётов. Старые траты остаются в валюте ввода. */
-export function setBaseCurrency(userId: number, currency: string): void {
-  db.update(users).set({ baseCurrency: currency.toUpperCase() }).where(eq(users.id, userId)).run()
+/**
+ * Меняет валюту отчётов И пересчитывает всё уже записанное.
+ *
+ * Без пересчёта столбец base_minor остаётся в СТАРОЙ базовой валюте, а все
+ * итоги подписываются новой: сто сомони превращались в сто долларов, и цифры
+ * врали в разы. Сумма и валюта ввода при этом не трогаются — они факт,
+ * а base_minor всего лишь их пересчёт.
+ *
+ * Возвращает, сколько трат пересчитано.
+ */
+export function setBaseCurrency(userId: number, currency: string): number {
+  const code = currency.toUpperCase()
+  const rows = db.select().from(expenses).where(eq(expenses.userId, userId)).all()
+
+  return db.transaction((tx) => {
+    tx.update(users).set({ baseCurrency: code }).where(eq(users.id, userId)).run()
+
+    let touched = 0
+    for (const row of rows) {
+      const { rate } = getRate(code, row.currency)
+      const baseMinor = convertMinor(row.amountMinor, row.currency, code, rate)
+      if (baseMinor === row.baseMinor && rate === row.rate) continue
+      tx.update(expenses)
+        .set({ baseMinor, rate })
+        .where(eq(expenses.id, row.id))
+        .run()
+      touched++
+    }
+    return touched
+  })
 }
 
 /** Последняя трата из конкретного чата — для правки отредактированного сообщения. */

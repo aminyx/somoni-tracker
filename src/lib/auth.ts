@@ -46,15 +46,19 @@ export function issueLoginToken(userId: number): { token: string; expiresAt: num
   const now = Date.now()
   const expiresAt = now + LOGIN_TOKEN_TTL_MS
 
-  db.transaction((tx) => {
-    tx.update(authTokens)
-      .set({ usedAt: now })
-      .where(and(eq(authTokens.userId, userId), isNull(authTokens.usedAt)))
-      .run()
-    tx.insert(authTokens)
-      .values({ tokenHash: sha256(token), userId, createdAt: now, expiresAt })
-      .run()
-  })
+  // Прежние живые ссылки НЕ гасим.
+  //
+  // Раньше гасили — и это ломало обычный сценарий: бот присылает кнопку
+  // в /start, человек пишет трату, бот присылает подсказку с новой ссылкой,
+  // и кнопка из /start становится мёртвой. Человек жмёт её и получает
+  // «ссылка больше не работает», ничего не сделав неправильно.
+  //
+  // Безопасность держится на другом: ссылка живёт 10 минут, срабатывает
+  // один раз и хранится только хешем. Несколько коротких живых ссылок
+  // у одного человека ничего не ослабляют.
+  db.insert(authTokens)
+    .values({ tokenHash: sha256(token), userId, createdAt: now, expiresAt })
+    .run()
 
   return { token, expiresAt }
 }

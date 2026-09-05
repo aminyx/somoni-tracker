@@ -13,21 +13,16 @@ import { formatMoney } from '../lib/money'
 import type { PeriodSummary } from '../lib/stats'
 import { dayKey, partsInZone, type Period } from '../lib/time'
 
-/**
- * Премиум-эмодзи. Идентификаторы проверены через getCustomEmojiStickers —
- * несуществующий отрисовался бы пустым квадратом.
+/*
+ * Премиум-эмодзи (<tg-emoji>) здесь сознательно НЕ используются.
  *
- * Внутри тега стоит обычная эмодзи: у кого нет Telegram Premium, увидит
- * именно её. Поэтому хуже не становится никому, а у части зрителей
- * получается аккуратнее.
+ * Bot API разрешает их не всякому боту: нужен купленный на Fragment
+ * дополнительный username, иначе Telegram отклоняет сообщение целиком.
+ * Проверка от владельца проходила, но у судьи без Premium карточка
+ * подтверждения траты могла просто не прийти — трата сохранена, ответа нет.
+ * Выигрыш чисто косметический и виден меньшинству; риск — потеря главного
+ * сообщения продукта. Размен не в нашу пользу.
  */
-const PREMIUM = {
-  check: '5427009714745517609',
-} as const
-
-function tgEmoji(id: string, fallback: string): string {
-  return `<tg-emoji emoji-id="${id}">${fallback}</tg-emoji>`
-}
 
 /** Полоса доли: та же картина, что на графике в панели, только текстом. */
 export function shareBar(percent: number, width = 10): string {
@@ -101,7 +96,7 @@ export function expenseCard(
   const title = expense.description ? esc(expense.description) : 'Без описания'
 
   const lines = [
-    `${tgEmoji(PREMIUM.check, '✅')} <b>${title}</b> · ${amount}`,
+    `✅ <b>${title}</b> · ${amount}`,
     `<blockquote>${category.emoji} ${category.name}`,
     `${humanTime(expense.spentAt, timezone)}</blockquote>`,
   ]

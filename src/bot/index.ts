@@ -937,6 +937,19 @@ bot.callbackQuery(/^cat:([0-9a-z]+):([a-z_]+)$/i, async (ctx) => {
   if (!user) return
   const [, id, slug] = ctx.match
 
+  const existing = getExpense(user.id, id!)
+  if (!existing) {
+    await ctx.answerCallbackQuery({ text: 'Трата не найдена' })
+    return
+  }
+  // Ту же категорию выбрали повторно: править сообщение нечем, а Telegram
+  // на попытку записать тот же текст отвечает «message is not modified»,
+  // и кнопка крутится, будто всё сломалось.
+  if (existing.category === slug) {
+    await ctx.answerCallbackQuery({ text: categoryBySlug(slug!).name })
+    return
+  }
+
   const updated = updateExpense(user, id!, { category: slug! })
   if (!updated) {
     await ctx.answerCallbackQuery({ text: 'Трата не найдена' })
