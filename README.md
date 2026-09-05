@@ -273,4 +273,38 @@ ONNX, около 12 МБ, скачиваются при первом запус�
 
 ---
 
+## Что использовано и откуда
+
+Весь прикладной код написан для этого проекта. Ниже — стороннее, чтобы
+не оставалось вопросов об источниках.
+
+**Библиотеки** (полный список с версиями — в `package.json`):
+[Next.js](https://nextjs.org), [React](https://react.dev),
+[grammY](https://grammy.dev), [Drizzle ORM](https://orm.drizzle.team),
+[better-sqlite3](https://github.com/WiseLibs/better-sqlite3),
+[Tailwind CSS](https://tailwindcss.com), [Zod](https://zod.dev),
+[ppu-paddle-ocr](https://www.npmjs.com/package/ppu-paddle-ocr).
+
+**Модели распознавания.** PaddleOCR PP-OCRv5, кириллический вариант —
+скачиваются при первом запуске с
+[huggingface.co/snowfluke/ppu-paddle-ocr-models](https://huggingface.co/snowfluke/ppu-paddle-ocr-models)
+и в репозитории не хранятся. Исходный
+[PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) — Apache 2.0.
+
+**Шрифты.** [Onest](https://fonts.google.com/specimen/Onest) и
+[JetBrains Mono](https://fonts.google.com/specimen/JetBrains+Mono),
+оба под SIL Open Font License, подключены через `next/font`.
+
+**Курсы валют.** [open.er-api.com](https://open.er-api.com) — бесплатно
+и без ключа. Запасная таблица зашита в `src/lib/rates.ts`.
+
+**Словарь категорий** составлен для этого проекта. При его сборке
+сверялись публичные списки категорий Wallet by BudgetBakers, Monefy
+и CoinKeeper, а местные реалии (маршрутка, Барки Точик, Тсел, Алиф,
+названия базаров) проверялись по открытым источникам о Душанбе.
+Чужие списки не копировались: набор из 13 категорий и 962 ключевых слов —
+свой, в том числе таджикская лексика, которой нет ни в одном из них.
+
+---
+
 Автор: [Aminyx](https://github.com/aminyx)

@@ -424,6 +424,9 @@ bot.command('settings', async (ctx) => {
 /* ------------------------------------------------------------------ */
 
 async function saveExpenseFromText(ctx: Context, user: User, text: string) {
+  // Запоминаем ДО записи: addExpense проставит отметку о первой трате,
+  // а нам надо знать, была ли она первой именно сейчас.
+  const wasFirstEver = !user.firstExpenseAt
   const entries = splitEntries(text)
   const results = []
 
@@ -486,6 +489,25 @@ async function saveExpenseFromText(ctx: Context, user: User, text: string) {
     if (limitWarning) {
       await ctx.reply(limitMessage(limitWarning), { parse_mode: 'HTML' })
     }
+  }
+
+  // Первая в жизни трата: сразу показываем, ради чего всё это.
+  // Без подсказки человек может так и не узнать, что есть панель.
+  if (wasFirstEver && results.some((r) => r.ok)) {
+    const panel = panelReply(user.id)
+    await ctx.reply(
+      [
+        'Готово — первая трата записана.',
+        '',
+        'Итоги: /today, /week, /month.',
+        'Графики по дням и категориям — в панели.',
+      ].join('\n') + panel.extraText,
+      {
+        parse_mode: 'HTML',
+        reply_markup: panel.keyboard,
+        link_preview_options: { is_disabled: true },
+      },
+    )
   }
 }
 
