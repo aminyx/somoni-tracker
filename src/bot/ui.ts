@@ -36,6 +36,39 @@ const PREMIUM = {
   check: '5427009714745517609',
 } as const
 
+/**
+ * Премиум-эмодзи категорий. Идентификаторы взяты не наугад: набор
+ * RestrictedEmoji прочитан через getStickerSet, и каждый id соответствует
+ * ровно той эмодзи, что стоит у категории в справочнике.
+ *
+ * Для четырёх категорий подходящей премиум-эмодзи в наборе не нашлось —
+ * они остаются обычными. Это заметно только рядом, и лучше так, чем
+ * подставлять чужой символ ради единообразия.
+ */
+const PREMIUM_CATEGORY: Record<string, string> = {
+  groceries: '5431499171045581032',
+  eating_out: '5359678839591018693',
+  transport: '5445015510435502457',
+  housing: '5465226866321268133',
+  connectivity: '5407025283456835913',
+  health: '5433635625217563352',
+  household: '5188365693803830912',
+  education: '5375163339154399459',
+  entertainment: '5375464961822695044',
+  gifts_events: '5199749070830197566',
+  finance: '5264895611517300926',
+  other: '5433653135799228968',
+}
+
+/**
+ * Эмодзи категории: премиум там, где нашлась, иначе обычная.
+ * Обычная всегда лежит внутри тега — её увидят без Telegram Premium.
+ */
+function categoryEmoji(slug: string, fallback: string): string {
+  const id = PREMIUM_CATEGORY[slug]
+  return id ? tgEmoji(id, fallback) : fallback
+}
+
 function tgEmoji(id: string, fallback: string): string {
   return `<tg-emoji emoji-id="${id}">${fallback}</tg-emoji>`
 }
@@ -133,7 +166,7 @@ export function expenseCard(
 
   const lines = [
     `${tgEmoji(PREMIUM.check, '✅')} <b>${title}</b> · ${amount}`,
-    `<blockquote>${category.emoji} ${category.name}`,
+    `<blockquote>${categoryEmoji(expense.category, category.emoji)} ${category.name}`,
     `${humanTime(expense.spentAt, timezone)}</blockquote>`,
   ]
 
@@ -254,7 +287,7 @@ export function report(
       const category = categoryBySlug(row.category)
       const amount = formatMoney(row.totalMinor, summary.currency)
       if (rows.length > 0) rows.push('')
-      rows.push(`${category.emoji} ${category.name}`)
+      rows.push(`${categoryEmoji(row.category, category.emoji)} ${category.name}`)
       rows.push(`<code>${shareBar(row.share)}</code> ${amount} · ${Math.round(row.share)}%`)
     }
     if (summary.byCategory.length > 10) {

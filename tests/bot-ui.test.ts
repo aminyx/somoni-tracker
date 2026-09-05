@@ -301,5 +301,8 @@ test('отчёт умещается в лимит сообщения Telegram', 
     share: 100 / 13,
   }))
   const text = report(makeSummary({ byCategory: many, count: 65 }), TZ, 'https://x.tj')
-  assert.ok(text.length < 4096, `слишком длинно: ${text.length}`)
+  // Лимит Telegram считается в БАЙТАХ, а не в символах: кириллица занимает
+  // по два, премиум-эмодзи добавляет к каждой категории по сорок с лишним.
+  const bytes = Buffer.byteLength(text, 'utf8')
+  assert.ok(bytes < 4096, `слишком длинно: ${bytes} байт при ${text.length} символах`)
 })
