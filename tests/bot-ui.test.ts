@@ -18,6 +18,7 @@ import {
   periodLabel,
   plural,
   report,
+  shareBar,
 } from '../src/bot/ui.ts'
 import type { PeriodSummary } from '../src/lib/stats.ts'
 
@@ -162,14 +163,14 @@ test('подсказка категории не дублирует текущу
 
 test('отчёт сравнивает с тем же числом прошедших дней', () => {
   const text = plain(report(makeSummary(), TZ, 'https://example.tj'))
-  assert.match(text, /за те же 3 дня прошлого периода/)
+  assert.match(text, /за те же 3 дня до этого/)
   assert.match(text, /421,20 смн/)
 })
 
 test('без данных за прошлый период сравнения нет', () => {
   const text = report(makeSummary({ previousComparableMinor: 0, previousTotalMinor: 0 }), TZ, null)
   // Доли категорий с процентами остаются; не должно быть именно строки сравнения.
-  assert.ok(!text.includes('прошлого периода'), 'сравнивать не с чем — строки быть не должно')
+  assert.ok(!text.includes('до этого'), 'сравнивать не с чем — строки быть не должно')
   assert.ok(!/[↑↓]/.test(text))
 })
 
@@ -222,4 +223,54 @@ test('время подписывается словами «сегодня» и
   assert.match(humanTime(Date.UTC(2026, 8, 3, 9, 5), TZ, now), /^сегодня 14:05$/)
   assert.match(humanTime(Date.UTC(2026, 8, 2, 9, 5), TZ, now), /^вчера 14:05$/)
   assert.match(humanTime(Date.UTC(2026, 7, 20, 9, 5), TZ, now), /^20 августа, 14:05$/)
+})
+
+test('полоса доли рисуется пропорционально', () => {
+  assert.equal(shareBar(0), '▱▱▱▱▱▱▱▱▱▱')
+  assert.equal(shareBar(100), '▰▰▰▰▰▰▰▰▰▰')
+  assert.equal(shareBar(52), '▰▰▰▰▰▱▱▱▱▱')
+  assert.equal(shareBar(8), '▰▱▱▱▱▱▱▱▱▱')
+  // За границы диапазона не вылезает даже при мусорных данных.
+  assert.equal(shareBar(-10).length, 10)
+  assert.equal(shareBar(999), '▰▰▰▰▰▰▰▰▰▰')
+})
+
+test('категории отчёта лежат в раскрывающейся цитате', () => {
+  const text = report(makeSummary(), TZ, null)
+  assert.ok(text.includes('<blockquote expandable>'), 'нужна раскрывающаяся цитата')
+  assert.ok(text.includes('</blockquote>'))
+  assert.ok(text.includes('<code>▰'), 'нужны полосы долей')
+})
+
+test('карточка траты использует премиум-эмодзи с запасным вариантом', () => {
+  const card = expenseCard(makeExpense(), TZ, 35000, 1, 'TJS')
+  assert.ok(card.includes('<tg-emoji emoji-id="5427009714745517609">✅</tg-emoji>'),
+    'внутри тега должна остаться обычная эмодзи — её увидят без Premium')
+})
+
+test('теги в сообщениях парные', () => {
+  for (const text of [
+    report(makeSummary(), TZ, null),
+    report(makeSummary({ count: 0, totalMinor: 0 }), TZ, null),
+    expenseCard(makeExpense(), TZ, 100, 1, 'TJS'),
+    expenseCard(makeExpense({ description: '<b>ломаем</b>' }), TZ, 100, 1, 'TJS'),
+    deletedCard(makeExpense()),
+  ]) {
+    for (const tag of ['b', 'i', 'code', 'blockquote', 'tg-emoji', 's']) {
+      const open = (text.match(new RegExp(`<${tag}[ >]`, 'g')) ?? []).length
+      const close = (text.match(new RegExp(`</${tag}>`, 'g')) ?? []).length
+      assert.equal(open, close, `непарный <${tag}> в: ${text.slice(0, 70)}`)
+    }
+  }
+})
+
+test('отчёт умещается в лимит сообщения Telegram', () => {
+  const many = Array.from({ length: 13 }, (_, i) => ({
+    category: ['groceries','eating_out','transport','housing','connectivity','health','clothing','household','education','entertainment','gifts_events','finance','other'][i]!,
+    totalMinor: 100000 - i * 1000,
+    count: 5,
+    share: 100 / 13,
+  }))
+  const text = report(makeSummary({ byCategory: many, count: 65 }), TZ, 'https://x.tj')
+  assert.ok(text.length < 4096, `слишком длинно: ${text.length}`)
 })

@@ -215,8 +215,12 @@ export function verifyInitData(initData: string, botToken: string): InitDataResu
   const hash = query.get('hash')
   if (!hash) throw new Error('initData без подписи')
 
+  // Из строки проверки исключается ТОЛЬКО hash. Поле signature (Ed25519-подпись
+  // для сторонних проверяющих, появилось в Bot API 8.0) — такое же полученное
+  // поле, и Telegram считает HMAC вместе с ним. Если его выбросить, подпись
+  // не сойдётся никогда: именно на этом Mini App отдавал 401 на каждый запуск.
+  // Оба поля исключаются только в другой проверке — по ключу Ed25519.
   query.delete('hash')
-  query.delete('signature') // Ed25519-подпись для третьих сторон, в HMAC не входит
 
   const dataCheckString = [...query.entries()]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))

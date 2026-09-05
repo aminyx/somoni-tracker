@@ -13,6 +13,28 @@ import { formatMoney } from '../lib/money'
 import type { PeriodSummary } from '../lib/stats'
 import { dayKey, partsInZone, type Period } from '../lib/time'
 
+/**
+ * Премиум-эмодзи. Идентификаторы проверены через getCustomEmojiStickers —
+ * несуществующий отрисовался бы пустым квадратом.
+ *
+ * Внутри тега стоит обычная эмодзи: у кого нет Telegram Premium, увидит
+ * именно её. Поэтому хуже не становится никому, а у части зрителей
+ * получается аккуратнее.
+ */
+const PREMIUM = {
+  check: '5427009714745517609',
+} as const
+
+function tgEmoji(id: string, fallback: string): string {
+  return `<tg-emoji emoji-id="${id}">${fallback}</tg-emoji>`
+}
+
+/** Полоса доли: та же картина, что на графике в панели, только текстом. */
+export function shareBar(percent: number, width = 10): string {
+  const filled = Math.max(0, Math.min(width, Math.round((percent / 100) * width)))
+  return '▰'.repeat(filled) + '▱'.repeat(width - filled)
+}
+
 /** Экранирование под parse_mode: HTML. */
 export function esc(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -79,8 +101,9 @@ export function expenseCard(
   const title = expense.description ? esc(expense.description) : 'Без описания'
 
   const lines = [
-    `✅ <b>${title}</b> — ${amount}`,
-    `${category.emoji} ${category.name} · ${humanTime(expense.spentAt, timezone)}`,
+    `${tgEmoji(PREMIUM.check, '✅')} <b>${title}</b> · ${amount}`,
+    `<blockquote>${category.emoji} ${category.name}`,
+    `${humanTime(expense.spentAt, timezone)}</blockquote>`,
   ]
 
   // Трата в другой валюте: показываем и пересчёт, иначе итог месяца
@@ -169,41 +192,50 @@ export function report(
     ].join('\n')
   }
 
-  const lines = [
-    `<b>${label}</b>`,
-    `Потрачено: <b>${total}</b> · ${summary.count} ${plural(summary.count, PLURAL_EXPENSE)}`,
-  ]
+  // Крупная сумма отдельной строкой: она здесь главная, а не подпись к ней.
+  const lines = [`<b>${label}</b>`, '', `<b>${total}</b>`]
 
   // Сравниваем с тем же числом прошедших дней прошлого периода и только
   // если там были траты: «+100 %» от нуля — не факт, а артефакт.
   const previous = summary.previousComparableMinor
   if (previous > 0) {
     const rounded = Math.round(((summary.totalMinor - previous) / previous) * 100)
-    const tail = `за те же ${summary.elapsedDays} ${plural(summary.elapsedDays, ['день', 'дня', 'дней'])} прошлого периода — ${formatMoney(previous, summary.currency)}`
-    if (Math.abs(rounded) < 3) {
-      lines.push(`≈ столько же: ${tail}`)
-    } else {
-      lines.push(`${rounded > 0 ? '↑' : '↓'} ${Math.abs(rounded)}%, ${tail}`)
-    }
+    const days = `${summary.elapsedDays} ${plural(summary.elapsedDays, ['день', 'дня', 'дней'])}`
+    const was = formatMoney(previous, summary.currency)
+    // Формулировка через тире, а не «к тем же N дням»: так не нужен
+    // дательный падеж, и число склоняется одинаково при любом значении.
+    const tail = `<i>за те же ${days} до этого — ${was}</i>`
+    lines.push(
+      Math.abs(rounded) < 3
+        ? `≈ столько же · ${tail}`
+        : `${rounded > 0 ? '↑' : '↓'} ${Math.abs(rounded)}% · ${tail}`,
+    )
   }
 
   if (summary.byCategory.length > 0) {
-    lines.push('')
-    for (const row of summary.byCategory.slice(0, 8)) {
+    // Категории — в раскрывающейся цитате: отчёт не занимает пол-экрана,
+    // но всё остаётся на месте по одному нажатию.
+    const rows: string[] = []
+    for (const row of summary.byCategory.slice(0, 10)) {
       const category = categoryBySlug(row.category)
       const amount = formatMoney(row.totalMinor, summary.currency)
-      lines.push(`${category.emoji} ${category.name} — <b>${amount}</b> · ${Math.round(row.share)}%`)
+      if (rows.length > 0) rows.push('')
+      rows.push(`${category.emoji} ${category.name}`)
+      rows.push(`<code>${shareBar(row.share)}</code> ${amount} · ${Math.round(row.share)}%`)
     }
-    if (summary.byCategory.length > 8) {
-      const rest = summary.byCategory.slice(8)
+    if (summary.byCategory.length > 10) {
+      const rest = summary.byCategory.slice(10)
       const restTotal = rest.reduce((acc, r) => acc + r.totalMinor, 0)
-      lines.push(`📦 ещё ${rest.length} — ${formatMoney(restTotal, summary.currency)}`)
+      rows.push('', `📦 ещё ${rest.length} — ${formatMoney(restTotal, summary.currency)}`)
     }
+    lines.push('', `<blockquote expandable>${rows.join('\n')}</blockquote>`)
   }
 
+  const footer = [`${summary.count} ${plural(summary.count, PLURAL_EXPENSE)}`]
   if (summary.period === 'month' && summary.averagePerDayMinor > 0) {
-    lines.push('', `В среднем ${formatMoney(summary.averagePerDayMinor, summary.currency)} в день.`)
+    footer.push(`в среднем ${formatMoney(summary.averagePerDayMinor, summary.currency)} в день`)
   }
+  lines.push(footer.join(' · '))
 
   if (panelUrl) lines.push('', 'Графики по дням — в панели.')
   return lines.join('\n')
