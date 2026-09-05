@@ -37,6 +37,33 @@ const BG_DARK = '#0D0D0C'
 const BG_LIGHT = '#FBFAF7'
 
 export function TelegramBridge({ authenticated }: { authenticated: boolean }) {
+  // Часовой пояс браузера. Telegram его не сообщает, поэтому новому
+  // пользователю стоит зона по умолчанию — а «сегодня» у судьи из другого
+  // пояса из-за этого считалось бы не за те сутки.
+  useEffect(() => {
+    if (!authenticated) return
+    let zone: string
+    try {
+      zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    } catch {
+      return
+    }
+    if (!zone) return
+
+    void fetch('/api/settings/timezone', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ timezone: zone }),
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((result: { changed?: boolean } | null) => {
+        // Зона поменялась — цифры на экране посчитаны за другие сутки.
+        // Перезагружаем, чтобы не показывать неверный итог.
+        if (result?.changed) window.location.reload()
+      })
+      .catch(() => undefined)
+  }, [authenticated])
+
   useEffect(() => {
     const app = window.Telegram?.WebApp
     if (!app) return

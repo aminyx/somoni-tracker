@@ -27,6 +27,13 @@ export const users = sqliteTable('users', {
   languageCode: text('language_code'),
   /** IANA-зона: от неё зависит, что такое «сегодня» */
   timezone: text('timezone').notNull().default('Asia/Dushanbe'),
+  /**
+   * Зона выставлена автоматически (1) или выбрана человеком (0).
+   * Telegram часовой пояс не сообщает, поэтому новым пользователям ставится
+   * зона по умолчанию, а панель при первом заходе подсказывает настоящую.
+   * Но если человек задал зону командой /settings — перебивать её нельзя.
+   */
+  timezoneAuto: integer('timezone_auto').notNull().default(1),
   /** валюта отчётов; траты в других валютах пересчитываются в неё */
   baseCurrency: text('base_currency').notNull().default('TJS'),
   /** день начала недели: 1 = понедельник */

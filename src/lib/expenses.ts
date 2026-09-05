@@ -451,7 +451,11 @@ export function linkExpenseMessage(
 
 /** Меняет часовой пояс пользователя. От него зависит, что такое «сегодня». */
 export function setTimezone(userId: number, timezone: string): void {
-  db.update(users).set({ timezone: safeTimeZone(timezone) }).where(eq(users.id, userId)).run()
+  // timezoneAuto = 0: человек выбрал зону сам, панель её больше не перебьёт.
+  db.update(users)
+    .set({ timezone: safeTimeZone(timezone), timezoneAuto: 0 })
+    .where(eq(users.id, userId))
+    .run()
 }
 
 /** Меняет валюту отчётов. Старые траты остаются в валюте ввода. */
@@ -472,4 +476,15 @@ export function lastExpenseInChat(userId: number, chatId: number): Expense | nul
       .limit(1)
       .get() ?? null
   )
+}
+
+/**
+ * Ставит зону, подсказанную браузером, — но только если пользователь
+ * не выбирал её сам. Возвращает true, если зона действительно изменилась.
+ */
+export function applyBrowserTimezone(user: User, zone: string): boolean {
+  if (user.timezoneAuto !== 1) return false
+  if (user.timezone === zone) return false
+  db.update(users).set({ timezone: safeTimeZone(zone) }).where(eq(users.id, user.id)).run()
+  return true
 }
