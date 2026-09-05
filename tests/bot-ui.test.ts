@@ -242,12 +242,39 @@ test('категории отчёта лежат в раскрывающейся
   assert.ok(text.includes('<code>▰'), 'нужны полосы долей')
 })
 
-test('в карточке нет премиум-эмодзи', () => {
-  // Bot API разрешает <tg-emoji> не каждому боту, а отказ уничтожает всё
-  // сообщение — у судьи без Premium подтверждение траты могло не прийти.
+test('премиум-эмодзи всегда с запасным вариантом внутри тега', () => {
+  // Разрешены, потому что Premium есть у ВЛАДЕЛЬЦА бота — так требует Bot API.
+  // Получателю без Premium показывается эмодзи из тела тега, поэтому она
+  // обязана там быть: пустой тег отрисовался бы пустотой.
   const card = expenseCard(makeExpense(), TZ, 35000, 1, 'TJS')
-  assert.ok(!card.includes('tg-emoji'), 'премиум-эмодзи вернулись в карточку')
-  assert.ok(card.includes('✅'), 'обычная галочка должна остаться')
+  const tags = [...card.matchAll(/<tg-emoji emoji-id="(\d+)">([^<]*)<\/tg-emoji>/g)]
+  assert.ok(tags.length >= 1, 'премиум-эмодзи пропали из карточки')
+  for (const [, id, fallback] of tags) {
+    assert.match(id!, /^\d{15,}$/, 'идентификатор не похож на настоящий')
+    assert.ok(fallback!.trim().length > 0, 'внутри тега пусто — без Premium будет дыра')
+  }
+})
+
+test('кнопка удаления помечена как опасная, возврат — как успешный', () => {
+  const keyboard = expenseKeyboard(makeExpense())
+  const buttons = keyboard.inline_keyboard.flat() as Array<{ text: string; style?: string }>
+  const remove = buttons.find((b) => b.text === 'Удалить')
+  assert.ok(remove, 'нет кнопки удаления')
+  assert.equal(remove!.style, 'danger', 'необратимое действие должно быть красным')
+  // Остальные кнопки цветом не выделяются: выделено всё — не выделено ничего.
+  const coloured = buttons.filter((b) => b.style).length
+  assert.equal(coloured, 1, `подсвечено кнопок: ${coloured}`)
+})
+
+test('цвет кнопки — только из разрешённых Bot API значений', () => {
+  const allowed = new Set(['danger', 'success', 'primary'])
+  const all = [
+    ...expenseKeyboard(makeExpense()).inline_keyboard.flat(),
+    ...categoryKeyboard('abc123def456xyz', 0).inline_keyboard.flat(),
+  ] as Array<{ style?: string }>
+  for (const button of all) {
+    if (button.style) assert.ok(allowed.has(button.style), `неизвестный стиль: ${button.style}`)
+  }
 })
 
 test('теги в сообщениях парные', () => {

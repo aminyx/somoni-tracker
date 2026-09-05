@@ -17,8 +17,10 @@ export interface Category {
   slug: string
   /** название в интерфейсе */
   name: string
-  /** название на таджикском — пригодится для второй локали */
+  /** название на таджикском */
   nameTg: string
+  /** название на английском */
+  nameEn: string
   emoji: string
   /** цвет для тёмной темы; контраст на тёмном фоне не ниже 7,3:1 */
   color: string
@@ -33,6 +35,7 @@ export const CATEGORIES: Category[] = [
     slug: 'groceries',
     name: 'Продукты',
     nameTg: 'Хӯрокворӣ',
+    nameEn: 'Groceries',
     emoji: '🛒',
     color: '#98E473',
     colorLight: '#388016',
@@ -42,6 +45,7 @@ export const CATEGORIES: Category[] = [
     slug: 'eating_out',
     name: 'Кафе и еда вне дома',
     nameTg: 'Хӯрок дар берун',
+    nameEn: 'Eating out',
     emoji: '🍽️',
     color: '#FF9851',
     colorLight: '#C14F00',
@@ -51,6 +55,7 @@ export const CATEGORIES: Category[] = [
     slug: 'transport',
     name: 'Транспорт',
     nameTg: 'Нақлиёт',
+    nameEn: 'Transport',
     emoji: '🚕',
     color: '#5CBDFF',
     colorLight: '#0076C7',
@@ -60,6 +65,7 @@ export const CATEGORIES: Category[] = [
     slug: 'housing',
     name: 'Жильё и коммуналка',
     nameTg: 'Манзил ва хизматрасонӣ',
+    nameEn: 'Housing & utilities',
     emoji: '🏠',
     color: '#C89DFF',
     colorLight: '#923CFF',
@@ -69,6 +75,7 @@ export const CATEGORIES: Category[] = [
     slug: 'connectivity',
     name: 'Связь и интернет',
     nameTg: 'Алоқа ва интернет',
+    nameEn: 'Phone & internet',
     emoji: '📶',
     color: '#18D8FF',
     colorLight: '#007E98',
@@ -78,6 +85,7 @@ export const CATEGORIES: Category[] = [
     slug: 'health',
     name: 'Здоровье и уход',
     nameTg: 'Саломатӣ ва нигоҳубин',
+    nameEn: 'Health & care',
     emoji: '💊',
     color: '#FF8D83',
     colorLight: '#E41200',
@@ -87,6 +95,7 @@ export const CATEGORIES: Category[] = [
     slug: 'clothing',
     name: 'Одежда и обувь',
     nameTg: 'Либос ва пойафзол',
+    nameEn: 'Clothes & shoes',
     emoji: '👕',
     color: '#FF8AB6',
     colorLight: '#E10055',
@@ -96,6 +105,7 @@ export const CATEGORIES: Category[] = [
     slug: 'household',
     name: 'Дом и хозтовары',
     nameTg: 'Хона ва рӯзгор',
+    nameEn: 'Home & supplies',
     emoji: '🧺',
     color: '#DCDD77',
     colorLight: '#76771B',
@@ -105,6 +115,7 @@ export const CATEGORIES: Category[] = [
     slug: 'education',
     name: 'Образование',
     nameTg: 'Таҳсил',
+    nameEn: 'Education',
     emoji: '🎓',
     color: '#9AADFF',
     colorLight: '#3E62FF',
@@ -114,6 +125,7 @@ export const CATEGORIES: Category[] = [
     slug: 'entertainment',
     name: 'Развлечения и хобби',
     nameTg: 'Фароғат ва варзиш',
+    nameEn: 'Fun & hobbies',
     emoji: '🎬',
     color: '#FFBF2B',
     colorLight: '#966900',
@@ -123,6 +135,7 @@ export const CATEGORIES: Category[] = [
     slug: 'gifts_events',
     name: 'Подарки и события',
     nameTg: 'Тӯҳфа ва маросим',
+    nameEn: 'Gifts & events',
     emoji: '🎁',
     color: '#EB90E3',
     colorLight: '#C81FB9',
@@ -132,6 +145,7 @@ export const CATEGORIES: Category[] = [
     slug: 'finance',
     name: 'Финансы и платежи',
     nameTg: 'Молия',
+    nameEn: 'Finance & fees',
     emoji: '💳',
     color: '#00DFDA',
     colorLight: '#007E7B',
@@ -141,6 +155,7 @@ export const CATEGORIES: Category[] = [
     slug: 'other',
     name: 'Прочее',
     nameTg: 'Дигар',
+    nameEn: 'Other',
     emoji: '📦',
     color: '#94A3B8',
     colorLight: '#5F7492',
@@ -154,6 +169,14 @@ const BY_SLUG = new Map(CATEGORIES.map((c) => [c.slug, c]))
 
 export function categoryBySlug(slug: string): Category {
   return BY_SLUG.get(slug) ?? BY_SLUG.get(OTHER_CATEGORY)!
+}
+
+/** Название категории на языке пользователя. */
+export function categoryName(slug: string, locale: 'ru' | 'tg' | 'en'): string {
+  const category = categoryBySlug(slug)
+  if (locale === 'tg') return category.nameTg
+  if (locale === 'en') return category.nameEn
+  return category.name
 }
 
 export function isCategorySlug(slug: string): boolean {

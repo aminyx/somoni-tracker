@@ -42,6 +42,7 @@ import { refreshRates } from '../lib/rates'
 import { expensesInRange, recentExpenses, summarize, totalFor } from '../lib/stats'
 import { rangeFor, safeTimeZone, zoneOffsetMs } from '../lib/time'
 import {
+  applyStyle,
   categoryKeyboard,
   deletedCard,
   esc,
@@ -153,7 +154,7 @@ const BUTTONS = {
 } as const
 
 function mainKeyboard() {
-  return new Keyboard()
+  const keyboard = new Keyboard()
     .text(BUTTONS.today)
     .text(BUTTONS.week)
     .text(BUTTONS.month)
@@ -164,6 +165,18 @@ function mainKeyboard() {
     .resized()
     .persistent()
     .placeholder('кофе 350')
+
+  // Цвет кнопок появился в Bot API 10.3 (24 августа 2026). Синим выделена
+  // «Панель» — главное действие после ввода траты; остальные обычные,
+  // иначе выделенным оказывается всё и не выделено ничего.
+  for (const row of keyboard.keyboard) {
+    for (const button of row) {
+      if (typeof button === 'object' && button.text === BUTTONS.panel) {
+        ;(button as { style?: string }).style = 'primary'
+      }
+    }
+  }
+  return keyboard
 }
 
 /**
@@ -232,6 +245,13 @@ function currencyKeyboard(current: string): InlineKeyboard {
     if (index % 2 === 1) keyboard.row()
   })
   if (CURRENCY_CHOICES.length % 2 === 1) keyboard.row()
+  return keyboard
+}
+
+/** Кнопка возврата после удаления — зелёная: это спасательное действие. */
+function undoKeyboard(expenseId: string): InlineKeyboard {
+  const keyboard = new InlineKeyboard().text('Вернуть', `undo:${expenseId}`)
+  applyStyle(keyboard, 'Вернуть', 'success')
   return keyboard
 }
 
@@ -984,7 +1004,7 @@ bot.callbackQuery(/^del:([0-9a-z]+)$/i, async (ctx) => {
   // а переписать собственную карточку можно всегда.
   await ctx.editMessageText(deletedCard(deleted), {
     parse_mode: 'HTML',
-    reply_markup: new InlineKeyboard().text('Вернуть', `undo:${deleted.id}`),
+    reply_markup: undoKeyboard(deleted.id),
   })
   await ctx.answerCallbackQuery({ text: 'Удалено' })
 })

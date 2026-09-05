@@ -24,6 +24,7 @@ import type { ParsedExpense } from './parser'
 import { getRate } from './rates'
 import { spentInCategory } from './stats'
 import { monthKey, rangeFor, zonedStartOfDay, partsInZone, safeTimeZone } from './time'
+import { isLocale, localeFromTelegram, type Locale } from './i18n'
 
 export interface TelegramProfile {
   id: number
@@ -64,6 +65,9 @@ export function ensureUser(profile: TelegramProfile, defaults?: { timezone?: str
       languageCode: profile.language_code ?? null,
       timezone: defaults?.timezone ?? 'Asia/Dushanbe',
       baseCurrency: defaults?.currency ?? 'TJS',
+      // Язык берём из настроек Telegram: таджикоязычному человеку не нужно
+      // ничего выбирать, чтобы бот заговорил на его языке.
+      locale: localeFromTelegram(profile.language_code),
       createdAt: now,
       lastSeenAt: now,
     })
@@ -528,4 +532,16 @@ export function applyBrowserTimezone(user: User, zone: string): boolean {
   if (user.timezone === zone) return false
   db.update(users).set({ timezone: safeTimeZone(zone) }).where(eq(users.id, user.id)).run()
   return true
+}
+
+/** Меняет язык интерфейса. */
+export function setLocale(userId: number, locale: string): boolean {
+  if (!isLocale(locale)) return false
+  db.update(users).set({ locale }).where(eq(users.id, userId)).run()
+  return true
+}
+
+/** Язык пользователя как значение перечисления, а не как произвольная строка. */
+export function localeOf(user: { locale: string }): Locale {
+  return isLocale(user.locale) ? user.locale : 'ru'
 }

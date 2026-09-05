@@ -13,21 +13,57 @@ import { formatMoney } from '../lib/money'
 import type { PeriodSummary } from '../lib/stats'
 import { dayKey, partsInZone, type Period } from '../lib/time'
 
-/*
- * Премиум-эмодзи (<tg-emoji>) здесь сознательно НЕ используются.
+/**
+ * Премиум-эмодзи.
  *
- * Bot API разрешает их не всякому боту: нужен купленный на Fragment
- * дополнительный username, иначе Telegram отклоняет сообщение целиком.
- * Проверка от владельца проходила, но у судьи без Premium карточка
- * подтверждения траты могла просто не прийти — трата сохранена, ответа нет.
- * Выигрыш чисто косметический и виден меньшинству; риск — потеря главного
- * сообщения продукта. Размен не в нашу пользу.
+ * Bot API: «Custom emoji entities can only be used by bots that purchased
+ * additional usernames on Fragment or in the messages directly sent by the
+ * bot to private, group and supergroup chats if the owner of the bot has
+ * a Telegram Premium subscription.»
+ *
+ * Условие — Premium у ВЛАДЕЛЬЦА бота, а не у получателя. Проверено живым
+ * запросом: сообщение принимается. Получателю без Premium показывается
+ * обычная эмодзи из тела тега, поэтому хуже никому не становится.
+ *
+ * Единственная зависимость: если Premium у владельца закончится, Telegram
+ * начнёт отклонять такие сообщения. Поэтому эмодзи стоит ровно в одном
+ * месте — в карточке траты, и заменить её обратно на «✅» это одна строка.
+ *
+ * Идентификаторы проверены через getCustomEmojiStickers: несуществующий
+ * отрисовался бы пустым квадратом.
  */
+const PREMIUM = {
+  check: '5427009714745517609',
+} as const
+
+function tgEmoji(id: string, fallback: string): string {
+  return `<tg-emoji emoji-id="${id}">${fallback}</tg-emoji>`
+}
 
 /** Полоса доли: та же картина, что на графике в панели, только текстом. */
 export function shareBar(percent: number, width = 10): string {
   const filled = Math.max(0, Math.min(width, Math.round((percent / 100) * width)))
   return '▰'.repeat(filled) + '▱'.repeat(width - filled)
+}
+
+/**
+ * Проставляет цвет кнопке по её подписи.
+ *
+ * InlineKeyboard из grammY не принимает style в text(), поэтому поле
+ * дописывается к уже собранной кнопке — тип в @grammyjs/types его знает.
+ */
+export function applyStyle(
+  keyboard: InlineKeyboard,
+  label: string,
+  style: 'danger' | 'success' | 'primary',
+): void {
+  for (const row of keyboard.inline_keyboard) {
+    for (const button of row) {
+      if (button.text === label) {
+        ;(button as { style?: string }).style = style
+      }
+    }
+  }
 }
 
 /** Экранирование под parse_mode: HTML. */
@@ -96,7 +132,7 @@ export function expenseCard(
   const title = expense.description ? esc(expense.description) : 'Без описания'
 
   const lines = [
-    `✅ <b>${title}</b> · ${amount}`,
+    `${tgEmoji(PREMIUM.check, '✅')} <b>${title}</b> · ${amount}`,
     `<blockquote>${category.emoji} ${category.name}`,
     `${humanTime(expense.spentAt, timezone)}</blockquote>`,
   ]
@@ -137,9 +173,12 @@ export function expenseKeyboard(expense: Expense, suggestions: string[] = []): I
     keyboard.row()
   }
 
+  // Цвет кнопки (Bot API 10.3 от 24 августа 2026): удаление красным —
+  // единственное необратимое действие на карточке, и его видно сразу.
   keyboard
     .text('Категория', `catmenu:${expense.id}:0`)
     .text('Удалить', `del:${expense.id}`)
+  applyStyle(keyboard, 'Удалить', 'danger')
   return keyboard
 }
 
