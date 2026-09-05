@@ -40,7 +40,7 @@ import { isOcrEnabled, recognizeReceipt, warmupOcr } from '../lib/ocr'
 import { explainFailure, parseExpense, splitEntries } from '../lib/parser'
 import { refreshRates } from '../lib/rates'
 import { expensesInRange, recentExpenses, summarize, totalFor } from '../lib/stats'
-import { rangeFor, safeTimeZone } from '../lib/time'
+import { rangeFor, safeTimeZone, zoneOffsetMs } from '../lib/time'
 import {
   categoryKeyboard,
   deletedCard,
@@ -164,6 +164,75 @@ function mainKeyboard() {
     .resized()
     .persistent()
     .placeholder('кофе 350')
+}
+
+/**
+ * Города для выбора часового пояса. Список, а не ввод IANA-зоны руками:
+ * «Asia/Dushanbe» знает не каждый, а свой город — каждый.
+ *
+ * Душанбе первым: продукт для Таджикистана. Хорог и Худжанд живут в той же
+ * зоне, отдельными кнопками их не выносим.
+ *
+ * Заметьте: это НЕ обязательный шаг при первом запуске. Панель определяет
+ * зону по браузеру сама, а мастер настройки из четырёх экранов до первой
+ * траты — ровно то, чего просят не делать: «трата добавляется одним
+ * сообщением».
+ */
+const TIMEZONE_CHOICES: Array<[string, string]> = [
+  ['Душанбе', 'Asia/Dushanbe'],
+  ['Ташкент', 'Asia/Tashkent'],
+  ['Алматы', 'Asia/Almaty'],
+  ['Бишкек', 'Asia/Bishkek'],
+  ['Москва', 'Europe/Moscow'],
+  ['Екатеринбург', 'Asia/Yekaterinburg'],
+  ['Новосибирск', 'Asia/Novosibirsk'],
+  ['Баку', 'Asia/Baku'],
+  ['Стамбул', 'Europe/Istanbul'],
+  ['Дубай', 'Asia/Dubai'],
+  ['Минск', 'Europe/Minsk'],
+  ['Берлин', 'Europe/Berlin'],
+]
+
+/** Валюты для быстрого выбора. Остальные — командой, их сотни. */
+const CURRENCY_CHOICES: Array<[string, string]> = [
+  ['🇹🇯 Сомонӣ', 'TJS'],
+  ['🇺🇸 Доллар', 'USD'],
+  ['🇷🇺 Рубль', 'RUB'],
+  ['🇪🇺 Евро', 'EUR'],
+  ['🇺🇿 Сум', 'UZS'],
+  ['🇰🇿 Тенге', 'KZT'],
+  ['🇰🇬 Сом', 'KGS'],
+  ['🇹🇷 Лира', 'TRY'],
+]
+
+/** Текущее смещение зоны словами: «UTC+5». */
+function utcOffsetLabel(zone: string): string {
+  const minutes = Math.round(zoneOffsetMs(Date.now(), safeTimeZone(zone)) / 60000)
+  const sign = minutes < 0 ? '−' : '+'
+  const hours = Math.abs(minutes) / 60
+  return `UTC${sign}${Number.isInteger(hours) ? hours : hours.toFixed(1)}`
+}
+
+function timezoneKeyboard(current: string): InlineKeyboard {
+  const keyboard = new InlineKeyboard()
+  TIMEZONE_CHOICES.forEach(([city, zone], index) => {
+    const mark = zone === current ? '• ' : ''
+    keyboard.text(`${mark}${city} (${utcOffsetLabel(zone)})`, `tz:${zone}`)
+    if (index % 2 === 1) keyboard.row()
+  })
+  if (TIMEZONE_CHOICES.length % 2 === 1) keyboard.row()
+  return keyboard
+}
+
+function currencyKeyboard(current: string): InlineKeyboard {
+  const keyboard = new InlineKeyboard()
+  CURRENCY_CHOICES.forEach(([name, code], index) => {
+    const mark = code === current ? '• ' : ''
+    keyboard.text(`${mark}${name}`, `cur:${code}`)
+    if (index % 2 === 1) keyboard.row()
+  })
+  if (CURRENCY_CHOICES.length % 2 === 1) keyboard.row()
+  return keyboard
 }
 
 /** Итог за сегодня — печатается под каждой сохранённой тратой. */
@@ -478,12 +547,18 @@ bot.command('settings', async (ctx) => {
     [
       '<b>Настройки</b>',
       '',
-      `Часовой пояс: <code>${esc(user.timezone)}</code>`,
-      `Валюта отчётов: <code>${esc(user.baseCurrency)}</code>`,
+      `🌍 Часовой пояс: <b>${esc(user.timezone)}</b> (${utcOffsetLabel(user.timezone)})`,
+      `💰 Валюта отчётов: <b>${esc(user.baseCurrency)}</b>`,
       '',
-      'Поменять: <code>/settings Europe/Moscow</code> или <code>/settings USD</code>',
+      'От часового пояса зависит, что считать «сегодня».',
     ].join('\n'),
-    { parse_mode: 'HTML' },
+    {
+      parse_mode: 'HTML',
+      reply_markup: new InlineKeyboard()
+        .text('Сменить часовой пояс', 'settz')
+        .row()
+        .text('Сменить валюту', 'setcur'),
+    },
   )
 })
 
@@ -765,6 +840,72 @@ bot.callbackQuery(/^ocr:(\d+)$/, async (ctx) => {
 /* ------------------------------------------------------------------ */
 
 bot.callbackQuery('noop', (ctx) => ctx.answerCallbackQuery())
+
+bot.callbackQuery('settz', async (ctx) => {
+  const user = currentUser(ctx)
+  if (!user) return
+  await ctx.editMessageText(
+    ['<b>Часовой пояс</b>', '', 'Выберите город — по нему считаются «сегодня», неделя и месяц.'].join('\n'),
+    { parse_mode: 'HTML', reply_markup: timezoneKeyboard(user.timezone) },
+  )
+  await ctx.answerCallbackQuery()
+})
+
+bot.callbackQuery('setcur', async (ctx) => {
+  const user = currentUser(ctx)
+  if (!user) return
+  await ctx.editMessageText(
+    [
+      '<b>Валюта отчётов</b>',
+      '',
+      'Траты в других валютах пересчитываются в неё по курсу на день траты.',
+      'Нужной нет? Напишите код: <code>/settings GBP</code>',
+    ].join('\n'),
+    { parse_mode: 'HTML', reply_markup: currencyKeyboard(user.baseCurrency) },
+  )
+  await ctx.answerCallbackQuery()
+})
+
+bot.callbackQuery(/^tz:([A-Za-z_]+\/[A-Za-z_]+)$/, async (ctx) => {
+  const user = currentUser(ctx)
+  if (!user) return
+  const zone = safeTimeZone(ctx.match[1]!, '')
+  if (!zone) {
+    await ctx.answerCallbackQuery({ text: 'Неизвестная зона' })
+    return
+  }
+  setTimezone(user.id, zone)
+  const city = TIMEZONE_CHOICES.find(([, z]) => z === zone)?.[0] ?? zone
+  await ctx.editMessageText(
+    [
+      `🌍 Часовой пояс: <b>${esc(city)}</b> (${utcOffsetLabel(zone)})`,
+      '',
+      'Теперь «сегодня», неделя и месяц считаются по нему.',
+    ].join('\n'),
+    { parse_mode: 'HTML' },
+  )
+  await ctx.answerCallbackQuery({ text: city })
+})
+
+bot.callbackQuery(/^cur:([A-Z]{3})$/, async (ctx) => {
+  const user = currentUser(ctx)
+  if (!user) return
+  const code = ctx.match[1]!
+  if (!isValidCurrency(code)) {
+    await ctx.answerCallbackQuery({ text: 'Неизвестная валюта' })
+    return
+  }
+  setBaseCurrency(user.id, code)
+  await ctx.editMessageText(
+    [
+      `💰 Валюта отчётов: <b>${esc(code)}</b>`,
+      '',
+      'Уже записанные траты остаются в валюте ввода — пересчёт идёт по курсу на день траты.',
+    ].join('\n'),
+    { parse_mode: 'HTML' },
+  )
+  await ctx.answerCallbackQuery({ text: code })
+})
 
 bot.callbackQuery(/^catmenu:([0-9a-z]+):(\d+)$/i, async (ctx) => {
   const user = currentUser(ctx)
