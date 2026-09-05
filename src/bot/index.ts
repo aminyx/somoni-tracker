@@ -536,6 +536,40 @@ bot.command('demo_clear', async (ctx) => {
   )
 })
 
+/**
+ * Служебное: показывает идентификаторы премиум-эмодзи из присланного
+ * сообщения. Нужно, чтобы выбрать эмодзи для категорий не наугад —
+ * несуществующий идентификатор отрисовался бы пустым квадратом.
+ *
+ * Команда не в списке /setMyCommands: она для настройки, а не для людей.
+ */
+bot.command('emoji_id', async (ctx) => {
+  await ctx.reply(
+    [
+      'Пришлите сообщение с премиум-эмодзи (ответом на это или просто следующим),',
+      'и я покажу их идентификаторы.',
+      '',
+      'Premium нужен только чтобы их отправить — читаю я любые.',
+    ].join('\n'),
+  )
+})
+
+bot.on('message:entities:custom_emoji', async (ctx) => {
+  const text = ctx.message.text ?? ctx.message.caption ?? ''
+  const found = (ctx.message.entities ?? [])
+    .filter((e) => e.type === 'custom_emoji')
+    .map((e) => ({
+      emoji: text.slice(e.offset, e.offset + e.length),
+      id: (e as { custom_emoji_id?: string }).custom_emoji_id ?? '?',
+    }))
+
+  if (found.length === 0) return
+  await ctx.reply(
+    ['<b>Идентификаторы премиум-эмодзи</b>', '', ...found.map((f) => `${f.emoji} — <code>${f.id}</code>`)].join('\n'),
+    { parse_mode: 'HTML' },
+  )
+})
+
 bot.command('settings', async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
