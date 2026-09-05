@@ -11,8 +11,8 @@
  */
 import 'dotenv/config'
 import { autoRetry } from '@grammyjs/auto-retry'
-import { Bot, GrammyError, HttpError, InlineKeyboard, InputFile } from 'grammy'
-import type { CommandContext, Context } from 'grammy'
+import { Bot, GrammyError, HttpError, InlineKeyboard, InputFile, Keyboard } from 'grammy'
+import type { Context } from 'grammy'
 import { runMigrations } from '../../scripts/migrate'
 import { pruneExpired, issueLoginToken } from '../lib/auth'
 import { CATEGORIES, categoryBySlug, isCategorySlug } from '../lib/categories'
@@ -133,6 +133,39 @@ function panelReply(userId: number): { extraText: string; keyboard: InlineKeyboa
   }
 }
 
+/**
+ * Кнопки под полем ввода.
+ *
+ * Кнопка меню слева занята Mini App, а Telegram разрешает только одну —
+ * поэтому список команд ушёл бы из виду. Здесь он возвращается в явном
+ * виде: человеку не нужно знать ни одной команды, чтобы всё найти.
+ *
+ * input_field_placeholder делает главную работу: в пустом поле ввода
+ * написано «кофе 350», и формат понятен без единого слова инструкции.
+ */
+const BUTTONS = {
+  today: 'Сегодня',
+  week: 'Неделя',
+  month: 'Месяц',
+  panel: 'Панель',
+  last: 'Последние',
+  help: 'Как писать',
+} as const
+
+function mainKeyboard() {
+  return new Keyboard()
+    .text(BUTTONS.today)
+    .text(BUTTONS.week)
+    .text(BUTTONS.month)
+    .row()
+    .text(BUTTONS.panel)
+    .text(BUTTONS.last)
+    .text(BUTTONS.help)
+    .resized()
+    .persistent()
+    .placeholder('кофе 350')
+}
+
 /** Итог за сегодня — печатается под каждой сохранённой тратой. */
 function todayTotals(user: User) {
   const range = rangeFor('day', Date.now(), user.timezone, user.weekStart)
@@ -156,7 +189,7 @@ bot.command('start', async (ctx) => {
       'Просто напишите строку — например <code>кофе 350</code> или <code>такси 900 работа</code>.',
       'Сумму и категорию разберу сам.',
       '',
-      'Итоги — командами /today, /week, /month.',
+      'Итоги — кнопками ниже или командами /today, /week, /month.',
       'Графики по дням и категориям — в панели, вход через того же бота, без пароля.',
     ].join('\n') + panel.extraText,
     {
@@ -165,6 +198,11 @@ bot.command('start', async (ctx) => {
       link_preview_options: { is_disabled: true },
     },
   )
+  // Отдельным сообщением: показать кнопки и подсказать формат ввода.
+  // Reply-клавиатуру нельзя послать вместе с inline-кнопкой в одном сообщении.
+  await ctx.reply('Кнопки ниже — то же самое, что команды.', {
+    reply_markup: mainKeyboard(),
+  })
 })
 
 bot.command('help', async (ctx) => {
@@ -182,7 +220,8 @@ bot.command('panel', async (ctx) => {
   )
 })
 
-async function sendReport(ctx: CommandContext<Context>, period: 'day' | 'week' | 'month') {
+// Context, а не CommandContext: отчёт вызывается и командой, и кнопкой.
+async function sendReport(ctx: Context, period: 'day' | 'week' | 'month') {
   const user = currentUser(ctx)
   if (!user) return
   const summary = summarize(
@@ -201,7 +240,8 @@ bot.command(['today', 'сегодня'], (ctx) => sendReport(ctx, 'day'))
 bot.command(['week', 'неделя'], (ctx) => sendReport(ctx, 'week'))
 bot.command(['month', 'месяц'], (ctx) => sendReport(ctx, 'month'))
 
-bot.command('last', async (ctx) => {
+/** Общее тело для команды /last и одноимённой кнопки. */
+async function sendRecent(ctx: Context) {
   const user = currentUser(ctx)
   if (!user) return
   const rows = recentExpenses(user.id, 10)
@@ -222,7 +262,9 @@ bot.command('last', async (ctx) => {
   }
   lines.push('Чтобы поправить или удалить — нажмите ссылку под тратой.')
   await ctx.reply(lines.join('\n'), { parse_mode: 'HTML', link_preview_options: { is_disabled: true } })
-})
+}
+
+bot.command('last', sendRecent)
 
 /** /e_<id> — открыть карточку конкретной траты из списка. */
 bot.hears(/^\/e_([0-9a-z]+)$/i, async (ctx) => {
@@ -238,6 +280,32 @@ bot.hears(/^\/e_([0-9a-z]+)$/i, async (ctx) => {
   await ctx.reply(
     expenseCard(expense, user.timezone, totals.totalMinor, totals.count, user.baseCurrency),
     { parse_mode: 'HTML', reply_markup: expenseKeyboard(expense) },
+  )
+})
+
+/* Нажатия на кнопки. Регистрируются ДО обработчика обычного текста,
+   иначе «Месяц» ушло бы в разбор траты и получило «не нашёл сумму». */
+bot.hears(BUTTONS.today, (ctx) => sendReport(ctx, 'day'))
+bot.hears(BUTTONS.week, (ctx) => sendReport(ctx, 'week'))
+bot.hears(BUTTONS.month, (ctx) => sendReport(ctx, 'month'))
+bot.hears(BUTTONS.last, sendRecent)
+
+bot.hears(BUTTONS.help, async (ctx) => {
+  await ctx.reply(HELP, {
+    parse_mode: 'HTML',
+    link_preview_options: { is_disabled: true },
+    reply_markup: mainKeyboard(),
+  })
+})
+
+bot.hears(BUTTONS.panel, async (ctx) => {
+  const user = currentUser(ctx)
+  if (!user) return
+  const panel = panelReply(user.id)
+  await ctx.reply(
+    'Ссылка действует 10 минут и открывается один раз — так её нельзя переслать и войти чужим.' +
+      panel.extraText,
+    { reply_markup: panel.keyboard, link_preview_options: { is_disabled: true } },
   )
 })
 
