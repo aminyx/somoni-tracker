@@ -64,7 +64,7 @@ test('теги HTML парные и совпадают с русским', () =>
     const dict = dictFor(locale)
     for (const key of keys) {
       const text = dict[key] ?? ''
-      for (const tag of ['b', 'i', 'code', 's']) {
+      for (const tag of ['b', 'i', 'code', 's', 'tg-emoji']) {
         const open = (text.match(new RegExp(`<${tag}>`, 'g')) ?? []).length
         const close = (text.match(new RegExp(`</${tag}>`, 'g')) ?? []).length
         assert.equal(open, close, `${locale}/${key}: непарный <${tag}>`)

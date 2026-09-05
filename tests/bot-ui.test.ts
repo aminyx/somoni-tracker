@@ -245,7 +245,7 @@ test('отчёт и карточка выходят на всех трёх яз�
     assert.ok(!text.includes('report.'), `${locale}: ключ вместо текста в отчёте`)
     assert.ok(card.length > 20 && text.length > 20)
     // Теги остаются парными на любом языке.
-    for (const tag of ['b', 'i', 'code', 'blockquote']) {
+    for (const tag of ['b', 'i', 'code', 'blockquote', 'tg-emoji']) {
       const open = (text.match(new RegExp(`<${tag}[ >]`, 'g')) ?? []).length
       const close = (text.match(new RegExp(`</${tag}>`, 'g')) ?? []).length
       assert.equal(open, close, `${locale}: непарный <${tag}> в отчёте`)
@@ -329,8 +329,16 @@ test('отчёт умещается в лимит сообщения Telegram', 
     share: 100 / 13,
   }))
   const text = report(makeSummary({ byCategory: many, count: 65 }), TZ, 'https://x.tj')
-  // Лимит Telegram считается в БАЙТАХ, а не в символах: кириллица занимает
-  // по два, премиум-эмодзи добавляет к каждой категории по сорок с лишним.
+
+  // Лимит Telegram в 4096 — это длина ТЕКСТА после разбора разметки:
+  // теги в него не входят. Считать сырые байты значило бы получить ложное
+  // падение от каждой добавленной премиум-эмодзи — тег весит полсотни
+  // байт и один символ.
+  const visible = text.replace(/<[^>]+>/g, '')
+  assert.ok(visible.length < 4096, `слишком длинно: ${visible.length} знаков текста`)
+
+  // Сырой размер тоже ограничен — уже не Telegram, а размером HTTP-поля.
+  // Запас здесь большой, проверка нужна против случайного взрыва разметки.
   const bytes = Buffer.byteLength(text, 'utf8')
-  assert.ok(bytes < 4096, `слишком длинно: ${bytes} байт при ${text.length} символах`)
+  assert.ok(bytes < 16384, `разметка разрослась: ${bytes} байт`)
 })

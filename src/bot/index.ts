@@ -17,6 +17,14 @@ import { runMigrations } from '../../scripts/migrate'
 import { pruneExpired, issueLoginToken } from '../lib/auth'
 import { CATEGORIES, categoryBySlug, categoryName, isCategorySlug } from '../lib/categories'
 import { csvFilename, expensesToCsv } from '../lib/csv'
+import { BUTTON_KEYS, allButtonLabels, buttonLabel, mainKeyboard } from './keyboard'
+import {
+  buttonIcon,
+  disablePremium,
+  isPremiumEmojiError,
+  mark,
+  stripPremium,
+} from './emoji'
 import { clearDemo, hasDemo, seedDemo } from '../lib/demo'
 import type { User } from '../lib/db/schema'
 import { env } from '../lib/env'
@@ -69,6 +77,30 @@ const bot = new Bot(TOKEN)
 // 429 и 5xx от Telegram — не наша ошибка и не повод терять трату пользователя.
 bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 10 }))
 
+/**
+ * Страховка от премиум-эмодзи.
+ *
+ * Telegram разрешает их, пока Premium есть у владельца бота. Если подписка
+ * кончится, он начнёт не вычищать эмодзи из сообщений, а отклонять
+ * сообщения ЦЕЛИКОМ — человек не получит ни карточки после сохранённой
+ * траты, ни отчёта, ни клавиатуры, и увидеть это можно будет только в
+ * логах. Поэтому первый же такой отказ гасит премиум-эмодзи до
+ * перезапуска, а сообщение уходит повторно обычным.
+ *
+ * Преобразователь стоит на уровне API, а не в месте сборки сообщения:
+ * собираются они в двух десятках мест, и обойти хоть одно означало бы
+ * оставить дыру ровно там, где её не ждёшь.
+ */
+bot.api.config.use(async (prev, method, payload, signal) => {
+  const result = await prev(method, payload, signal)
+  if (result.ok) return result
+  if (!isPremiumEmojiError(result.description ?? '')) return result
+
+  disablePremium(`${method}: ${result.description}`)
+  const plain = stripPremium(payload as Record<string, unknown>)
+  return prev(method, plain as typeof payload, signal)
+})
+
 /* ------------------------------------------------------------------ */
 /*  Вспомогательное                                                    */
 /* ------------------------------------------------------------------ */
@@ -119,20 +151,46 @@ function canUseUrlButton(): boolean {
 }
 
 /** Кнопка «Открыть панель», если адрес публичный. Иначе кнопки нет. */
-function panelKeyboard(userId: number): InlineKeyboard | undefined {
+function panelKeyboard(userId: number, locale: Locale = 'ru'): InlineKeyboard | undefined {
   if (!canUseUrlButton()) return undefined
-  return new InlineKeyboard().url('Открыть панель', panelLink(userId))
+  // Подпись раньше была русским литералом: у англоязычного судьи главная
+  // кнопка бота оставалась на русском.
+  const keyboard = new InlineKeyboard().url(t(locale, 'btn.openPanel'), panelLink(userId))
+  icon(keyboard, buttonIcon('openPanel'))
+  return keyboard
+}
+
+/**
+ * Ставит иконку последней добавленной кнопке.
+ *
+ * Своя обёртка, а не keyboard.icon(): grammY бросает исключение, если
+ * иконку просят при пустой строке клавиатуры — например сразу после
+ * .row(). Здесь же обрабатывается выключенный премиум: идентификатора
+ * нет — иконки просто не будет, и это нормальный путь, а не ошибка.
+ */
+function icon(keyboard: InlineKeyboard, id: string | undefined): void {
+  if (!id) return
+  const rows = keyboard.inline_keyboard
+  const last = rows[rows.length - 1]
+  if (!last || last.length === 0) return
+  ;(last[last.length - 1] as { icon_custom_emoji_id?: string }).icon_custom_emoji_id = id
 }
 
 /**
  * Готовые параметры ответа со ссылкой на панель: кнопкой либо текстом.
  * Возвращает и добавку к тексту сообщения, чтобы ссылка не потерялась.
  */
-function panelReply(userId: number): { extraText: string; keyboard: InlineKeyboard | undefined } {
-  const keyboard = panelKeyboard(userId)
+function panelReply(
+  userId: number,
+  locale: Locale = 'ru',
+): { extraText: string; keyboard: InlineKeyboard | undefined } {
+  const keyboard = panelKeyboard(userId, locale)
   if (keyboard) return { extraText: '', keyboard }
+  // Текст был русским литералом, хотя перевод уже лежал в словаре:
+  // на непубличном адресе кнопки нет, и ссылка уходит текстом — тогда
+  // англоязычный судья получал русскую строку.
   return {
-    extraText: `\n\nПанель: ${panelLink(userId)}\nСсылка действует 10 минут и открывается один раз.`,
+    extraText: t(locale, 'panel.link', { url: panelLink(userId) }),
     keyboard: undefined,
   }
 }
@@ -147,50 +205,6 @@ function panelReply(userId: number): { extraText: string; keyboard: InlineKeyboa
  * input_field_placeholder делает главную работу: в пустом поле ввода
  * написано «кофе 350», и формат понятен без единого слова инструкции.
  */
-const BUTTON_KEYS = ['today', 'week', 'month', 'panel', 'last', 'help'] as const
-type ButtonKey = (typeof BUTTON_KEYS)[number]
-
-/** Подпись кнопки на языке пользователя. */
-function buttonLabel(locale: Locale, key: ButtonKey): string {
-  return t(locale, `btn.${key}`)
-}
-
-/**
- * Все варианты подписи на всех языках.
- *
- * Нажатие приходит боту обычным текстом, а язык человек может сменить —
- * значит слушать надо все три подписи сразу. Иначе после смены языка
- * кнопки молча перестают работать: текст уходит в разбор траты.
- */
-function allButtonLabels(key: ButtonKey): string[] {
-  return LOCALES.map((locale) => buttonLabel(locale, key))
-}
-
-function mainKeyboard(locale: Locale) {
-  const keyboard = new Keyboard()
-    .text(buttonLabel(locale, 'today'))
-    .text(buttonLabel(locale, 'week'))
-    .text(buttonLabel(locale, 'month'))
-    .row()
-    .text(buttonLabel(locale, 'panel'))
-    .text(buttonLabel(locale, 'last'))
-    .text(buttonLabel(locale, 'help'))
-    .resized()
-    .persistent()
-    .placeholder(t(locale, 'placeholder.input'))
-
-  // Цвет кнопок появился в Bot API 10.3 (24 августа 2026). Синим выделена
-  // «Панель» — главное действие после ввода траты; остальные обычные,
-  // иначе выделенным оказывается всё и не выделено ничего.
-  for (const row of keyboard.keyboard) {
-    for (const button of row) {
-      if (typeof button === 'object' && button.text === buttonLabel(locale, 'panel')) {
-        ;(button as { style?: string }).style = 'primary'
-      }
-    }
-  }
-  return keyboard
-}
 
 /**
  * Города для выбора часового пояса. Список, а не ввод IANA-зоны руками:
@@ -255,11 +269,10 @@ function utcOffsetLabel(zone: string): string {
 function timezoneKeyboard(current: string, locale: Locale, prefix = 'tz'): InlineKeyboard {
   const keyboard = new InlineKeyboard()
   TIMEZONE_CHOICES.forEach((city, index) => {
-    const mark = city.zone === current ? '• ' : ''
-    keyboard.text(
-      `${mark}${city.name[locale]} (${utcOffsetLabel(city.zone)})`,
-      `${prefix}:${city.zone}`,
-    )
+    // Точка отмечает выбранный город. Именно точка, а не галочка: галочка
+    // рядом с премиум-иконкой читается как «нажато и сохранено».
+    const dot = city.zone === current ? '• ' : ''
+    keyboard.text(`${dot}${city.name[locale]} (${utcOffsetLabel(city.zone)})`, `${prefix}:${city.zone}`)
     if (index % 2 === 1) keyboard.row()
   })
   if (TIMEZONE_CHOICES.length % 2 === 1) keyboard.row()
@@ -269,8 +282,10 @@ function timezoneKeyboard(current: string, locale: Locale, prefix = 'tz'): Inlin
 function languageKeyboard(current: Locale): InlineKeyboard {
   const keyboard = new InlineKeyboard()
   for (const locale of LOCALES) {
-    const mark = locale === current ? '• ' : ''
-    keyboard.text(`${mark}${LOCALE_NAMES[locale]}`, `lang:${locale}`).row()
+    const dot = locale === current ? '• ' : ''
+    keyboard.text(`${dot}${LOCALE_NAMES[locale]}`, `lang:${locale}`)
+    icon(keyboard, buttonIcon('changeLanguage'))
+    keyboard.row()
   }
   return keyboard
 }
@@ -279,8 +294,10 @@ function languageKeyboard(current: Locale): InlineKeyboard {
 function wizardLanguageKeyboard(current: Locale): InlineKeyboard {
   const keyboard = new InlineKeyboard()
   for (const locale of LOCALES) {
-    const mark = locale === current ? '• ' : ''
-    keyboard.text(`${mark}${LOCALE_NAMES[locale]}`, `wlang:${locale}`).row()
+    const dot = locale === current ? '• ' : ''
+    keyboard.text(`${dot}${LOCALE_NAMES[locale]}`, `wlang:${locale}`)
+    icon(keyboard, buttonIcon('changeLanguage'))
+    keyboard.row()
   }
   return keyboard
 }
@@ -288,8 +305,8 @@ function wizardLanguageKeyboard(current: Locale): InlineKeyboard {
 function currencyKeyboard(current: string): InlineKeyboard {
   const keyboard = new InlineKeyboard()
   CURRENCY_CHOICES.forEach(([name, code], index) => {
-    const mark = code === current ? '• ' : ''
-    keyboard.text(`${mark}${name}`, `cur:${code}`)
+    const dot = code === current ? '• ' : ''
+    keyboard.text(`${dot}${name}`, `cur:${code}`)
     if (index % 2 === 1) keyboard.row()
   })
   if (CURRENCY_CHOICES.length % 2 === 1) keyboard.row()
@@ -297,9 +314,12 @@ function currencyKeyboard(current: string): InlineKeyboard {
 }
 
 /** Кнопка возврата после удаления — зелёная: это спасательное действие. */
-function undoKeyboard(expenseId: string): InlineKeyboard {
-  const keyboard = new InlineKeyboard().text('Вернуть', `undo:${expenseId}`)
-  applyStyle(keyboard, 'Вернуть', 'success')
+function undoKeyboard(expenseId: string, locale: Locale = 'ru'): InlineKeyboard {
+  // Подпись была русским литералом, хотя перевод в словаре уже лежал.
+  const label = t(locale, 'btn.restore')
+  const keyboard = new InlineKeyboard().text(label, `undo:${expenseId}`)
+  icon(keyboard, buttonIcon('restore'))
+  applyStyle(keyboard, label, 'success')
   return keyboard
 }
 
@@ -320,7 +340,7 @@ bot.command('start', async (ctx) => {
   const L = localeOf(user)
   const examples = EXAMPLES[L]
   const name = user.firstName ? `, ${esc(user.firstName)}` : ''
-  const panel = panelReply(user.id)
+  const panel = panelReply(user.id, localeOf(user))
   await ctx.reply(
     [
       t(L, 'start.greeting', { name }),
@@ -363,7 +383,7 @@ bot.command('help', async (ctx) => {
 bot.command('panel', async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
-  const panel = panelReply(user.id)
+  const panel = panelReply(user.id, localeOf(user))
   await ctx.reply(t(localeOf(user), 'panel.once') + panel.extraText, {
     reply_markup: panel.keyboard,
     link_preview_options: { is_disabled: true },
@@ -379,7 +399,7 @@ async function sendReport(ctx: Context, period: 'day' | 'week' | 'month') {
     period,
   )
   const L = localeOf(user)
-  const panel = panelReply(user.id)
+  const panel = panelReply(user.id, localeOf(user))
   await ctx.reply(
     report(summary, user.timezone, config.APP_URL, L, EXAMPLES[L].one) + panel.extraText,
     {
@@ -459,7 +479,7 @@ bot.hears(allButtonLabels('help'), async (ctx) => {
 bot.hears(allButtonLabels('panel'), async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
-  const panel = panelReply(user.id)
+  const panel = panelReply(user.id, localeOf(user))
   await ctx.reply(t(localeOf(user), 'panel.once') + panel.extraText, {
     reply_markup: panel.keyboard,
     link_preview_options: { is_disabled: true },
@@ -593,7 +613,7 @@ bot.command('demo', async (ctx) => {
 
   const L = localeOf(user)
   if (hasDemo(user.id)) {
-    const panel = panelReply(user.id)
+    const panel = panelReply(user.id, localeOf(user))
     await ctx.reply(t(L, 'demo.already') + panel.extraText, {
       reply_markup: panel.keyboard,
       link_preview_options: { is_disabled: true },
@@ -604,7 +624,7 @@ bot.command('demo', async (ctx) => {
   const added = seedDemo(user)
   // Одна ссылка на ответ: issueLoginToken гасит предыдущий токен, поэтому
   // два вызова подряд оставили бы в тексте мёртвую ссылку.
-  const panel = panelReply(user.id)
+  const panel = panelReply(user.id, localeOf(user))
   await ctx.reply(
     [
       t(L, 'demo.added', { count: added, plural: plural(L, 'plural.expense', added) }),
@@ -706,12 +726,13 @@ bot.command('settings', async (ctx) => {
     [
       t(L, 'settings.title'),
       '',
-      t(L, 'settings.language', { name: LOCALE_NAMES[L] }),
+      t(L, 'settings.language', { icon: mark('lang'), name: LOCALE_NAMES[L] }),
       t(L, 'settings.timezone', {
+        icon: mark('globe'),
         zone: esc(user.timezone),
         offset: utcOffsetLabel(user.timezone),
       }),
-      t(L, 'settings.currency', { code: esc(user.baseCurrency) }),
+      t(L, 'settings.currency', { icon: mark('money'), code: esc(user.baseCurrency) }),
       '',
       t(L, 'settings.whyTimezone'),
     ].join('\n'),
@@ -808,7 +829,7 @@ async function saveExpenseFromText(ctx: Context, user: User, text: string) {
   // Первая в жизни трата: сразу показываем, ради чего всё это.
   // Без подсказки человек может так и не узнать, что есть панель.
   if (wasFirstEver && results.some((r) => r.ok)) {
-    const panel = panelReply(user.id)
+    const panel = panelReply(user.id, localeOf(user))
     await ctx.reply(
       [t(L, 'first.done'), '', t(L, 'first.reports'), t(L, 'first.panel')].join('\n') + panel.extraText,
       {
@@ -938,7 +959,7 @@ bot.on('message:photo', async (ctx) => {
     rememberCaption(String(notice.message_id), caption)
 
     const lines = [
-      t(L, 'receipt.question'),
+      t(L, 'receipt.question', { icon: mark('search') }),
       '',
       ...result.candidates.map((c) => `• <b>${formatMoney(toMinor(c.amount, user.baseCurrency), user.baseCurrency)}</b> — <i>${esc(c.line.slice(0, 60))}</i>`),
       '',
@@ -1064,6 +1085,7 @@ bot.callbackQuery(/^wtz:(.+)$/, async (ctx) => {
 
   await ctx.editMessageText(
     t(L, 'wizard.done', {
+      icon: mark('done'),
       city: esc(cityName(zone, L)),
       offset: utcOffsetLabel(zone),
       currency: esc(currency),
@@ -1136,7 +1158,11 @@ bot.callbackQuery(/^tz:([A-Za-z_]+\/[A-Za-z_]+)$/, async (ctx) => {
   }
   setTimezone(user.id, zone)
   await ctx.editMessageText(
-    t(L, 'settings.timezoneSet', { city: esc(cityName(zone, L)), offset: utcOffsetLabel(zone) }),
+    t(L, 'settings.timezoneSet', {
+      icon: mark('globe'),
+      city: esc(cityName(zone, L)),
+      offset: utcOffsetLabel(zone),
+    }),
     { parse_mode: 'HTML' },
   )
   await ctx.answerCallbackQuery({ text: cityName(zone, L) })
@@ -1237,9 +1263,9 @@ bot.callbackQuery(/^del:([0-9a-z]+)$/i, async (ctx) => {
   // а переписать собственную карточку можно всегда.
   await ctx.editMessageText(deletedCard(deleted, localeOf(user)), {
     parse_mode: 'HTML',
-    reply_markup: undoKeyboard(deleted.id),
+    reply_markup: undoKeyboard(deleted.id, localeOf(user)),
   })
-  await ctx.answerCallbackQuery({ text: 'Удалено' })
+  await ctx.answerCallbackQuery({ text: t(localeOf(user), 'toast.deleted') })
 })
 
 bot.callbackQuery(/^undo:([0-9a-z]+)$/i, async (ctx) => {

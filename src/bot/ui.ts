@@ -10,6 +10,7 @@
  * часть переведена, часть нет, и это заметнее, чем полное отсутствие языка.
  */
 import { InlineKeyboard } from 'grammy'
+import { buttonIcon, categoryIcon, categoryMark, mark } from './emoji'
 import { CATEGORIES, categoryBySlug, categoryName } from '../lib/categories'
 import type { Expense } from '../lib/db/schema'
 import type { LimitWarning } from '../lib/expenses'
@@ -19,47 +20,10 @@ import type { PeriodSummary } from '../lib/stats'
 import { dayKey, partsInZone, type Period } from '../lib/time'
 
 /**
- * Премиум-эмодзи.
- *
- * Bot API разрешает их в личных чатах, если Telegram Premium есть
- * у ВЛАДЕЛЬЦА бота, а не у получателя. Проверено живым запросом.
- * Внутри тега всегда стоит обычная эмодзи — её видят без Premium,
- * поэтому хуже никому не становится.
- *
- * Идентификаторы получены через getStickerSet набора RestrictedEmoji,
- * а не подобраны наугад: несуществующий отрисовался бы пустым квадратом.
+ * Премиум-эмодзи живут в src/bot/emoji.ts — одним каталогом на весь бот.
+ * Здесь только их применение: `mark` для знаков в тексте, `categoryMark`
+ * для значка категории, `buttonIcon`/`categoryIcon` для иконок кнопок.
  */
-const PREMIUM_CHECK = '5427009714745517609'
-
-/**
- * Премиум-эмодзи категорий. Для одежды подходящей в наборе не нашлось —
- * она остаётся обычной. Подставлять туда чужой символ ради единообразия
- * не стоит: рядом это заметно и читается как ошибка.
- */
-const PREMIUM_CATEGORY: Record<string, string> = {
-  groceries: '5431499171045581032',
-  eating_out: '5359678839591018693',
-  transport: '5445015510435502457',
-  housing: '5465226866321268133',
-  connectivity: '5407025283456835913',
-  health: '5433635625217563352',
-  household: '5188365693803830912',
-  education: '5375163339154399459',
-  entertainment: '5375464961822695044',
-  gifts_events: '5199749070830197566',
-  finance: '5264895611517300926',
-  other: '5433653135799228968',
-}
-
-function tgEmoji(id: string, fallback: string): string {
-  return `<tg-emoji emoji-id="${id}">${fallback}</tg-emoji>`
-}
-
-/** Эмодзи категории: премиум там, где нашлась, иначе обычная. */
-function categoryEmoji(slug: string, fallback: string): string {
-  const id = PREMIUM_CATEGORY[slug]
-  return id ? tgEmoji(id, fallback) : fallback
-}
 
 /** Полоса доли: та же картина, что на графике в панели, только текстом. */
 export function shareBar(percent: number, width = 10): string {
@@ -77,13 +41,18 @@ export function applyStyle(
   label: string,
   style: 'danger' | 'success' | 'primary',
 ): void {
+  let hit = false
   for (const row of keyboard.inline_keyboard) {
     for (const button of row) {
       if (button.text === label) {
         ;(button as { style?: string }).style = style
+        hit = true
       }
     }
   }
+  // Раньше промах проходил молча: кнопка просто теряла цвет, и заметить
+  // это можно было только глазами на своём телефоне.
+  if (!hit) console.warn(`[бот] нет кнопки «${label}» — цвет ${style} не применён`)
 }
 
 /** Экранирование под parse_mode: HTML. */
@@ -149,8 +118,8 @@ export function expenseCard(
   const title = expense.description ? esc(expense.description) : t(locale, 'card.noDescription')
 
   const lines = [
-    `${tgEmoji(PREMIUM_CHECK, '✅')} <b>${title}</b> · ${amount}`,
-    `<blockquote>${categoryEmoji(expense.category, category.emoji)} ${name}`,
+    `${mark('saved')} <b>${title}</b> · ${amount}`,
+    `<blockquote>${categoryMark(expense.category, category.emoji)} ${name}`,
     `${humanTime(expense.spentAt, timezone, locale)}</blockquote>`,
   ]
 
@@ -197,21 +166,38 @@ export function expenseKeyboard(
   const chips = suggestions.filter((slug) => slug !== expense.category).slice(0, 2)
   if (chips.length > 0) {
     for (const slug of chips) {
-      keyboard.text(
-        `${categoryBySlug(slug).emoji} ${categoryName(slug, locale)}`,
-        `cat:${expense.id}:${slug}`,
-      )
+      // Значок категории уходит в иконку кнопки, а не в её текст: подпись
+      // остаётся чистой, и премиум-версия значка видна прямо на кнопке.
+      keyboard.text(categoryName(slug, locale), `cat:${expense.id}:${slug}`)
+      withIcon(keyboard, categoryIcon(slug))
     }
     keyboard.row()
   }
 
   const deleteLabel = t(locale, 'btn.delete')
-  keyboard
-    .text(t(locale, 'btn.category'), `catmenu:${expense.id}:0`)
-    .text(deleteLabel, `del:${expense.id}`)
+  keyboard.text(t(locale, 'btn.category'), `catmenu:${expense.id}:0`)
+  withIcon(keyboard, buttonIcon('category'))
+  keyboard.text(deleteLabel, `del:${expense.id}`)
+  withIcon(keyboard, buttonIcon('delete'))
   // Удаление красным: единственное необратимое действие на карточке.
   applyStyle(keyboard, deleteLabel, 'danger')
   return keyboard
+}
+
+/**
+ * Ставит иконку последней добавленной кнопке.
+ *
+ * Отдельная обёртка, потому что grammY бросает исключение, если `.icon()`
+ * позвали при пустой строке клавиатуры — например сразу после `.row()`.
+ * Здесь же обрабатывается выключенный премиум: идентификатора нет —
+ * иконки просто не будет, и это нормальный путь, а не ошибка.
+ */
+function withIcon(keyboard: InlineKeyboard, id: string | undefined): void {
+  if (!id) return
+  const rows = keyboard.inline_keyboard
+  const last = rows[rows.length - 1]
+  if (!last || last.length === 0) return
+  ;(last[last.length - 1] as { icon_custom_emoji_id?: string }).icon_custom_emoji_id = id
 }
 
 /** Меню выбора категории, две колонки, с постраничностью. */
@@ -222,10 +208,8 @@ export function categoryKeyboard(expenseId: string, page = 0, locale: Locale = '
 
   const keyboard = new InlineKeyboard()
   slice.forEach((category, index) => {
-    keyboard.text(
-      `${category.emoji} ${categoryName(category.slug, locale)}`,
-      `cat:${expenseId}:${category.slug}`,
-    )
+    keyboard.text(categoryName(category.slug, locale), `cat:${expenseId}:${category.slug}`)
+    withIcon(keyboard, categoryIcon(category.slug))
     if (index % 2 === 1) keyboard.row()
   })
   if (slice.length % 2 === 1) keyboard.row()
@@ -256,7 +240,7 @@ export function report(
 
   if (summary.count === 0) {
     return [
-      `<b>${label}</b>`,
+      `${mark('report')} <b>${label}</b>`,
       '',
       t(locale, 'report.empty'),
       t(locale, 'report.emptyHint', { example }),
@@ -264,7 +248,7 @@ export function report(
   }
 
   // Крупная сумма отдельной строкой: она здесь главная, а не подпись к ней.
-  const lines = [`<b>${label}</b>`, '', `<b>${total}</b>`]
+  const lines = [`${mark('report')} <b>${label}</b>`, '', `<b>${total}</b>`]
 
   // Сравниваем с тем же числом прошедших дней прошлого периода и только
   // если там были траты: «+100 %» от нуля — не факт, а артефакт.
@@ -280,7 +264,9 @@ export function report(
       Math.abs(rounded) < 3
         ? t(locale, 'report.same', { tail })
         : t(locale, 'report.delta', {
-            arrow: rounded > 0 ? '↑' : '↓',
+            // Стрелка — единственное место отчёта, где знак несёт число,
+            // а не украшает строку: вверх это «потратил больше».
+            arrow: rounded > 0 ? mark('up') : mark('down'),
             percent: Math.abs(rounded),
             tail,
           }),
@@ -296,7 +282,7 @@ export function report(
       const amount = formatMoney(row.totalMinor, summary.currency)
       if (rows.length > 0) rows.push('')
       rows.push(
-        `${categoryEmoji(row.category, category.emoji)} ${categoryName(row.category, locale)}`,
+        `${categoryMark(row.category, category.emoji)} ${categoryName(row.category, locale)}`,
       )
       rows.push(`<code>${shareBar(row.share)}</code> ${amount} · ${Math.round(row.share)}%`)
     }
@@ -353,7 +339,7 @@ export function helpText(
   examples: { one: string; two: string; three: string },
 ): string {
   return [
-    t(locale, 'help.title'),
+    t(locale, 'help.title', { icon: mark('hint') }),
     '',
     t(locale, 'help.intro'),
     `• <code>${examples.one}</code>`,
