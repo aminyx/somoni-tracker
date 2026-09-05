@@ -184,7 +184,7 @@ export function isCategorySlug(slug: string): boolean {
 }
 
 /**
- * Словарь ключевых слов: 962 записи, ни одно слово не принадлежит двум
+ * Словарь ключевых слов: 1255 записей, ни одно слово не принадлежит двум
  * категориям одновременно — это проверяется тестом.
  *
  * Таджикские буквы пишутся канонически: нормализатор сворачивает
@@ -206,6 +206,14 @@ export const KEYWORDS: Record<string, string[]> = {
     'ёвар', 'садбарг', 'магнит', 'корвон', 'мехргон', 'саховат', 'шохмансур', 'фаровон',
     'groceries', 'grocery', 'supermarket', 'bread', 'milk', 'meat', 'vegetables', 'fruits',
     'food shop',
+    'себ', 'ангур', 'пиёз', 'сабзи', 'сабзӣ', 'бодиринг',
+    'помидор', 'мурғ', 'мург', 'моҳи', 'моҳӣ', 'панир',
+    'ҷурғот', 'чакка', 'асал', 'намак', 'макарон', 'анор',
+    'тарбуз', 'харбуза', 'мағз', 'магз', 'шакар', 'чормағз',
+    'хурмо', 'лимӯ', 'лиму', 'меваҷот', 'мевачот', 'нӯшоба',
+    'нушоба', 'grocery store', 'eggs', 'cheese', 'fruit', 'vegetable',
+    'rice', 'chicken', 'fish', 'sugar', 'flour', 'butter',
+    'yogurt', 'market', 'snacks',
   ],
   eating_out: [
     'кафе', 'кофейня', 'ресторан', 'рест', 'столовая', 'ошхона', 'чайхана', 'чойхона',
@@ -219,6 +227,12 @@ export const KEYWORDS: Record<string, string[]> = {
     'пирожки', 'доставка еды', 'заказал еду', 'еда на вынос', 'чаевые', 'счет в кафе', 'поел',
     'поели', 'хурок', 'хӯрок', 'cafe', 'restaurant', 'lunch', 'dinner', 'breakfast', 'coffee',
     'pizza', 'burger', 'fastfood', 'food delivery', 'takeaway', 'snack',
+    'қаҳва', 'кахва', 'қаҳвахона', 'кахвахона', 'хӯроки нисфирӯзӣ', 'хуроки нисфирузи',
+    'ноништа', 'хӯроки шом', 'хуроки шом', 'тарабхона', 'ошхонa', 'буриёни',
+    'сомсахона', 'мураббо', 'яхмос', 'ширинӣ', 'ширини', 'restaurant bill',
+    'cafeteria', 'bistro', 'diner', 'brunch', 'tea', 'latte',
+    'cappuccino', 'espresso', 'dessert', 'ice cream', 'sushi', 'kebab',
+    'shawarma', 'noodles', 'meal', 'eat out', 'eating out', 'tip',
   ],
   transport: [
     'такси', 'таксӣ', 'таксист', 'на такси', 'яндекс такси', 'яндекс го', 'yandex go',
@@ -233,6 +247,12 @@ export const KEYWORDS: Record<string, string[]> = {
     'ремонт машины', 'сто', 'автосервис', 'эвакуатор', 'прокат велосипеда', 'самокат', 'taxi',
     'bus', 'minibus', 'fuel', 'petrol', 'gas station', 'parking', 'car wash', 'flight',
     'train', 'bus ticket',
+    'нақлиёти ҷамъиятӣ', 'наклиети чамъияти', 'мошинрони', 'чиптаи автобус', 'чипта', 'самолёт',
+    'ҳавопаймо', 'хавопаймо', 'фурудгоҳ', 'фурудгох', 'истгоҳ', 'истгох',
+    'сӯзишворӣ', 'сузишвори', 'таъмири мошин', 'мошиншӯӣ', 'мошиншуи', 'ride',
+    'cab', 'uber', 'metro', 'subway', 'tram', 'ticket',
+    'airport', 'airplane', 'scooter', 'bicycle', 'toll', 'diesel',
+    'refuel', 'car repair', 'car service', 'tyres',
   ],
   housing: [
     'квартира', 'за квартиру', 'аренда', 'аренда квартиры', 'арендная плата', 'съем',
@@ -246,6 +266,11 @@ export const KEYWORDS: Record<string, string[]> = {
     'охрана дома', 'земельный налог', 'залог за квартиру', 'депозит за квартиру', 'переезд',
     'грузчики', 'rent', 'utilities', 'electricity', 'water bill', 'gas bill', 'heating',
     'apartment', 'housing',
+    'иҷора', 'ичора', 'хонаи иҷоравӣ', 'манзил', 'оби нӯшокӣ', 'оби нушоки',
+    'пули об', 'ҳаққи об', 'хакки об', 'нархи барқ', 'гармидиҳӣ', 'гармидихи', 'хизматрасонии коммунали', 'андози замин',
+    'кӯчидан', 'кучидан', 'water', 'water supply', 'rent payment', 'landlord',
+    'mortgage', 'communal', 'trash', 'garbage', 'maintenance', 'deposit',
+    'moving', 'electric bill',
   ],
   connectivity: [
     'связь', 'мобильная связь', 'за связь', 'телефон', 'на телефон', 'номер', 'баланс',
@@ -257,6 +282,10 @@ export const KEYWORDS: Record<string, string[]> = {
     'гигабайты', 'пакет интернета', 'интернет пакет', 'мобильный интернет', 'роуминг', 'смс',
     'звонки', 'минуты', 'алока', 'алоқа', 'провайдер', 'телевидение', 'кабельное', 'iptv',
     'mobile', 'internet', 'sim', 'top up', 'topup', 'recharge', 'data package', 'phone bill',
+    'телефони мобилӣ', 'телефони мобили', 'пур кардани баланс', 'пурӣ', 'рақам', 'рақами телефон',
+    'ракам', 'интернети хонагӣ', 'интернети хонаги', 'бастаи интернет', 'телевизион', 'mobile top up',
+    'airtime', 'broadband', 'wi-fi', 'router', 'subscription phone', 'call credit',
+    'cellular',
   ],
   health: [
     'аптека', 'в аптеке', 'дорухона', 'лекарство', 'лекарства', 'таблетки', 'дору', 'витамины',
@@ -271,6 +300,10 @@ export const KEYWORDS: Record<string, string[]> = {
     'барбершоп', 'салон красоты', 'маникюр', 'педикюр', 'эпиляция', 'укладка',
     'краска для волос', 'гигиена', 'pharmacy', 'medicine', 'doctor', 'dentist', 'hospital',
     'clinic', 'haircut', 'barber', 'salon', 'cosmetics',
+    'духтури дандон', 'дандонпизишк', 'табиб', 'таҳлил', 'тахлил', 'витамин',
+    'ампула', 'сӯзандору', 'сузандору', 'айнак', 'маска', 'ҷарроҳӣ',
+    'чаррохи', 'drugstore', 'vitamins', 'checkup', 'therapy', 'glasses',
+    'prescription', 'surgery', 'insurance health', 'lab test',
   ],
   clothing: [
     'одежда', 'либос', 'обувь', 'пойафзол', 'кроссовки', 'кеды', 'туфли', 'ботинки', 'сапоги',
@@ -282,6 +315,10 @@ export const KEYWORDS: Record<string, string[]> = {
     'цепочка', 'атлас', 'адрас', 'курта', 'тюбетейка', 'токи', 'платок', 'руймол', 'ателье',
     'пошив', 'портной', 'химчистка', 'ремонт обуви', 'подшить', 'детская одежда', 'clothes',
     'clothing', 'shoes', 'sneakers', 'jeans', 'shirt', 'jacket', 'dress', 'bag', 'accessories',
+    'пироҳан', 'пирохан', 'шим', 'ҷинс', 'чинс', 'ҷуроб',
+    'чуроб', 'кулоҳ', 'кулох', 'дастпӯшак', 'дастпушак', 'халта',
+    'тӯб', 't-shirt', 'tshirt', 'coat', 'socks', 'underwear',
+    'boots', 'hat', 'wardrobe',
   ],
   household: [
     'хозтовары', 'хозтовар', 'бытовая химия', 'порошок', 'стиральный порошок', 'моющее',
@@ -297,6 +334,10 @@ export const KEYWORDS: Record<string, string[]> = {
     'утюг', 'микроволновка', 'мультиварка', 'вентилятор', 'обогреватель', 'кондиционер',
     'household', 'cleaning', 'detergent', 'furniture', 'home repair', 'tools', 'appliance',
     'kitchenware',
+    'рӯзгор', 'рузгор', 'собун', 'шампун', 'хокаи ҷомашӯӣ', 'хокаи чомашуи',
+    'дастмол', 'зарфшӯӣ', 'зарфшуи', 'batareyka', 'батарейка', 'soap',
+    'shampoo', 'towel', 'napkins', 'dishes', 'light bulb', 'batteries',
+    'toilet paper', 'household goods', 'hardware store',
   ],
   education: [
     'школа', 'мактаб', 'в школу', 'за школу', 'университет', 'донишгох', 'донишгоҳ',
@@ -309,6 +350,9 @@ export const KEYWORDS: Record<string, string[]> = {
     'занятие', 'тренинг', 'вебинар', 'онлайн курс', 'udemy', 'coursera', 'автошкола',
     'обучение вождению', 'школьное питание', 'school', 'university', 'tuition', 'course',
     'tutor', 'books', 'stationery', 'education',
+    'омӯзиш', 'омузиш', 'дарс', 'устод', 'дафтар', 'қалам',
+    'калам', 'хониш', 'college', 'lesson', 'notebook', 'exam fee',
+    'training', 'workshop', 'textbook',
   ],
   entertainment: [
     'кино', 'кинотеатр', 'билет в кино', 'театр', 'концерт', 'музей', 'выставка', 'парк',
@@ -322,6 +366,10 @@ export const KEYWORDS: Record<string, string[]> = {
     'хаммом', 'отдых', 'на природу', 'пикник', 'турпоездка', 'отпуск', 'путешествие', 'отель',
     'гостиница', 'хостел', 'экскурсия', 'cinema', 'movie', 'concert', 'gym', 'fitness',
     'subscription', 'game', 'hobby', 'travel', 'hotel',
+    'фароғат', 'фарогат', 'бозӣ', 'бози', 'консерт', 'сайругашт',
+    'истироҳат', 'истирохат', 'варзишгоҳ', 'варзишгох', 'шиноварӣ', 'шиновари',
+    'theatre', 'theater', 'games', 'park', 'museum', 'swimming',
+    'streaming', 'night out', 'bowling', 'billiards',
   ],
   gifts_events: [
     'подарок', 'подарки', 'на подарок', 'тухфа', 'тӯҳфа', 'той', 'туй', 'тӯй', 'на туй',
@@ -333,6 +381,9 @@ export const KEYWORDS: Record<string, string[]> = {
     'ифтар', 'иди рамазон', 'курбон', 'курбан', 'в гости', 'гостям', 'мехмон', 'мехмони',
     'конверт', 'деньги на свадьбу', 'туйхона', 'похороны', 'благотворительность', 'gift',
     'present', 'wedding', 'birthday', 'charity', 'donation',
+    'арӯсӣ', 'аруси', 'зодрӯз', 'зодруз', 'ид', 'иди',
+    'меҳмонӣ', 'гулдаста', 'гул', 'хайрия', 'flowers', 'party',
+    'celebration', 'holiday gift', 'anniversary',
   ],
   finance: [
     'кредит', 'за кредит', 'карз', 'қарз', 'долг', 'отдал долг', 'вернул долг', 'взял в долг',
@@ -345,6 +396,9 @@ export const KEYWORDS: Record<string, string[]> = {
     'штраф', 'пеня', 'взнос', 'членский взнос', 'накопления', 'сбережения', 'копилка',
     'инвестиции', 'обмен валюты', 'обменник', 'курс валют', 'конвертация', 'loan', 'credit',
     'debt', 'money transfer', 'commission', 'bank fee', 'tax', 'fine', 'insurance', 'exchange',
+    'бонк', 'хазина', 'фоиз', 'интиқол', 'интикол', 'андоз',
+    'суғурта', 'сугурта', 'пасандоз', 'bank', 'transfer fee', 'savings',
+    'interest', 'atm fee', 'exchange fee',
   ],
   other: [
     'прочее', 'прочие', 'прочие расходы', 'разное', 'разные расходы', 'другое',

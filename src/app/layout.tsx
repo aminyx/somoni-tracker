@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import Script from 'next/script'
 import { JetBrains_Mono, Onest } from 'next/font/google'
+import { THEME_BOOTSTRAP } from '@/components/ThemeToggle'
 import './globals.css'
 
 // Шрифты подключаются через next/font: файлы отдаются с нашего домена,
@@ -45,6 +46,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // объявлен на html, и пустая переменная сделала бы всё объявление
     // недействительным — страница уехала бы в Times New Roman.
     <html lang="ru" className={`${onest.variable} ${mono.variable}`} suppressHydrationWarning>
+      <head>
+        {/* Выбранная тема ставится до первой отрисовки. В useEffect было бы
+            поздно: страница успевает мигнуть тёмной, прежде чем применится
+            светлая. Скрипт крошечный и синхронный — на отрисовку не влияет. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
+      </head>
       <body className="antialiased">
         {/* Скрипт Telegram нужен, только когда панель открыта как Mini App.
             beforeInteractive: объект WebApp должен существовать до того,

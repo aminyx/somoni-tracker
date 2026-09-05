@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { Dashboard, type DashboardData } from '@/components/Dashboard'
 import { TelegramBridge } from '@/components/TelegramBridge'
+import { localeOf } from '@/lib/expenses'
 import { currentUser } from '@/lib/session'
 import { expensesInRange, summarize } from '@/lib/stats'
 import { rangeFor } from '@/lib/time'
@@ -34,6 +35,7 @@ export default async function AppPage() {
       timezone: user.timezone,
       baseCurrency: user.baseCurrency,
       firstExpenseAt: user.firstExpenseAt,
+      locale: localeOf(user),
     },
     period: 'month',
     at: now,

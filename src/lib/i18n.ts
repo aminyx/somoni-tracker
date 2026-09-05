@@ -31,6 +31,20 @@ export const LOCALE_NAMES: Record<Locale, string> = {
  * всё, что не распознали, — русский: продукт для Таджикистана,
  * где русский понимают почти все.
  */
+/**
+ * Язык для страниц, которые открываются до входа: лендинг и /enter.
+ * Пользователя там ещё нет, а заголовок Accept-Language есть всегда.
+ *
+ * Разбор нарочно грубый: берём первый тег и смотрим на его основу. Полный
+ * разбор с q-весами дал бы другой ответ только там, где человек перечислил
+ * несколько языков и понизил вес первого — редкость, ради которой не стоит
+ * держать лишний код на странице входа.
+ */
+export function localeFromHeader(header: string | null | undefined): Locale {
+  const first = (header ?? '').split(',')[0]?.trim() ?? ''
+  return localeFromTelegram(first)
+}
+
 export function localeFromTelegram(code: string | null | undefined): Locale {
   const value = (code ?? '').toLowerCase()
   if (value.startsWith('tg')) return 'tg'
@@ -195,6 +209,9 @@ const ru: Dict = {
   'toast.deleted': 'Удалено',
   'toast.restored': 'Вернул',
   'toast.saved': 'Записал',
+  'toast.notFound': 'Трата не найдена',
+  'export.filename': 'траты',
+  'settings.usage': 'Не понял. Пример: <code>/settings Asia/Dushanbe</code>, <code>/settings USD</code> или <code>/settings tg</code>',
 
   'parse.empty': 'Пустое сообщение.',
   'parse.noAmount': 'Не нашёл сумму. Напишите, например: «{example}».',
@@ -230,6 +247,8 @@ const ru: Dict = {
   'web.restore': 'Вернуть',
   'web.downloadCsv': 'Скачать CSV',
   'web.logout': 'Выйти',
+  'web.themeLight': 'Светлая тема',
+  'web.themeDark': 'Тёмная тема',
   'web.prevPeriod': 'Предыдущий период',
   'web.nextPeriod': 'Следующий период',
   'web.day': 'День',
@@ -258,6 +277,15 @@ const ru: Dict = {
   'help.commands': '<b>Команды</b>',
   'help.list': '/today — итог за сегодня\n/week — за неделю (с понедельника)\n/month — за месяц\n/last — последние траты\n/panel — открыть веб-панель\n/limit — лимит по категории\n/export — выгрузить CSV\n/settings — язык, часовой пояс и валюта\n/demo — заполнить примерами\n/help — эта справка',
   'receipt.word': 'Чек',
+  'start.pickLanguage': 'Язык можно сменить сразу — или писать траты прямо сейчас.',
+  'wizard.language': '<b>Язык</b>\nНа каком языке говорить?',
+  'wizard.city': '<b>Город</b>\nПо нему считаются «сегодня», неделя и месяц.',
+  'wizard.done': '<b>Готово</b>\n{city} · {offset} · {currency}\n\nТеперь просто напишите трату: <code>{example}</code>',
+  'wizard.skip': 'Пропустить',
+  'wizard.changeCurrency': 'Другая валюта',
+  'web.sameDaysMonth': 'за те же {days} {month}',
+  'web.sameDaysPeriod': 'за те же {days} прошлого периода',
+  'web.almostSame': '≈ так же',
 }
 
 /**
@@ -368,6 +396,9 @@ const tg: Dict = {
   'toast.deleted': 'Нест карда шуд',
   'toast.restored': 'Баргардондам',
   'toast.saved': 'Сабт кардам',
+  'toast.notFound': 'Харҷ ёфт нашуд',
+  'export.filename': 'харҷҳо',
+  'settings.usage': 'Нафаҳмидам. Мисол: <code>/settings Asia/Dushanbe</code>, <code>/settings USD</code> ё <code>/settings tg</code>',
   'parse.empty': 'Паём холӣ аст.',
   'parse.noAmount': 'Маблағро наёфтам. Масалан ҳамин тавр нависед: «{example}».',
   'parse.notPositive': 'Маблағ бояд аз сифр зиёд бошад.',
@@ -400,6 +431,8 @@ const tg: Dict = {
   'web.restore': 'Баргардондан',
   'web.downloadCsv': 'CSV-ро зеркашӣ кардан',
   'web.logout': 'Баромадан',
+  'web.themeLight': 'Мавзӯи равшан',
+  'web.themeDark': 'Мавзӯи торик',
   'web.prevPeriod': 'Давраи пешина',
   'web.nextPeriod': 'Давраи навбатӣ',
   'web.day': 'Рӯз',
@@ -424,6 +457,15 @@ const tg: Dict = {
   'help.commands': '<b>Фармонҳо</b>',
   'help.list': '/today — ҷамъбасти имрӯз\n/week — барои ҳафта (аз душанбе)\n/month — барои моҳ\n/last — харҷҳои охирин\n/panel — кушодани панел\n/limit — маҳдудият аз рӯи категория\n/export — баровардани CSV\n/settings — забон, минтақаи вақт ва асъор\n/demo — бо намунаҳо пур кардан\n/help — ҳамин роҳнамо',
   'receipt.word': 'Чек',
+  'start.pickLanguage': 'Забонро дарҳол иваз кардан мумкин аст — ё ҳозир ҳамин хел харҷ нависед.',
+  'wizard.language': '<b>Забон</b>\nБо кадом забон гап занем?',
+  'wizard.city': '<b>Шаҳр</b>\nАз рӯи он «имрӯз», ҳафта ва моҳ ҳисоб мешавад.',
+  'wizard.done': '<b>Тайёр</b>\n{city} · {offset} · {currency}\n\nАкнун танҳо харҷро нависед: <code>{example}</code>',
+  'wizard.skip': 'Гузаштан',
+  'wizard.changeCurrency': 'Асъори дигар',
+  'web.sameDaysMonth': 'дар ҳамон {days}-и {month}',
+  'web.sameDaysPeriod': 'дар ҳамон {days}-и давраи гузашта',
+  'web.almostSame': '≈ ҳамон қадар',
 }
 
 /** Английский: две формы, третья повторяет вторую. */
@@ -531,6 +573,9 @@ const en: Dict = {
   'toast.deleted': 'Deleted',
   'toast.restored': 'Restored',
   'toast.saved': 'Saved',
+  'toast.notFound': 'Expense not found',
+  'export.filename': 'expenses',
+  'settings.usage': 'Did not get it. Example: <code>/settings Asia/Dushanbe</code>, <code>/settings USD</code> or <code>/settings tg</code>',
   'parse.empty': 'Empty message.',
   'parse.noAmount': 'I did not find an amount. Write it like this: “{example}”.',
   'parse.notPositive': 'The amount must be greater than zero.',
@@ -563,6 +608,8 @@ const en: Dict = {
   'web.restore': 'Restore',
   'web.downloadCsv': 'Download CSV',
   'web.logout': 'Log out',
+  'web.themeLight': 'Light theme',
+  'web.themeDark': 'Dark theme',
   'web.prevPeriod': 'Previous period',
   'web.nextPeriod': 'Next period',
   'web.day': 'Day',
@@ -587,6 +634,15 @@ const en: Dict = {
   'help.commands': '<b>Commands</b>',
   'help.list': '/today — today\'s total\n/week — this week (from Monday)\n/month — this month\n/last — recent expenses\n/panel — open the dashboard\n/limit — category limit\n/export — download CSV\n/settings — language, time zone and currency\n/demo — fill with examples\n/help — this help',
   'receipt.word': 'Receipt',
+  'start.pickLanguage': 'Change the language now — or just start writing expenses.',
+  'wizard.language': '<b>Language</b>\nWhich language should I use?',
+  'wizard.city': '<b>City</b>\nIt decides what counts as today, this week and this month.',
+  'wizard.done': '<b>All set</b>\n{city} · {offset} · {currency}\n\nNow just write an expense: <code>{example}</code>',
+  'wizard.skip': 'Skip',
+  'wizard.changeCurrency': 'Another currency',
+  'web.sameDaysMonth': 'same {days} of {month}',
+  'web.sameDaysPeriod': 'same {days} of the previous period',
+  'web.almostSame': '≈ about the same',
 }
 
 const DICTS: Record<Locale, Dict> = { ru, tg, en }

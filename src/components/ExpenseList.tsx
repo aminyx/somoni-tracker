@@ -1,8 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { CATEGORIES, categoryBySlug } from '@/lib/categories'
+import { CATEGORIES, categoryBySlug, categoryName } from '@/lib/categories'
 import type { Expense } from '@/lib/db/schema'
+import {
+  MONTHS_GENITIVE,
+  WEEKDAYS_SHORT,
+  t,
+  type Locale,
+} from '@/lib/i18n'
 import { formatMoney, fromMinor } from '@/lib/money'
 import { dayKey, partsInZone } from '@/lib/time'
 
@@ -25,22 +31,17 @@ interface Props {
   filterCategory: string | null
   onEdit: (id: string, patch: Record<string, unknown>) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  locale: Locale
 }
 
-const MONTHS_GENITIVE = [
-  'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
-]
-const WEEKDAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
-
-function dayHeading(key: string, timezone: string, now: number): string {
+function dayHeading(key: string, timezone: string, now: number, locale: Locale): string {
   const todayKey = dayKey(now, timezone)
   const yesterdayKey = dayKey(now - 86_400_000, timezone)
-  if (key === todayKey) return 'Сегодня'
-  if (key === yesterdayKey) return 'Вчера'
+  if (key === todayKey) return t(locale, 'web.today')
+  if (key === yesterdayKey) return t(locale, 'web.yesterday')
   const [year, month, day] = key.split('-').map(Number)
-  const weekday = WEEKDAYS[new Date(Date.UTC(year!, month! - 1, day!)).getUTCDay()]
-  return `${day} ${MONTHS_GENITIVE[month! - 1]}, ${weekday}`
+  const weekday = WEEKDAYS_SHORT[locale][new Date(Date.UTC(year!, month! - 1, day!)).getUTCDay()]
+  return `${day} ${MONTHS_GENITIVE[locale][month! - 1]}, ${weekday}`
 }
 
 function timeLabel(instant: number, timezone: string): string {
@@ -56,6 +57,7 @@ export function ExpenseList({
   filterCategory,
   onEdit,
   onDelete,
+  locale,
 }: Props) {
   const [openId, setOpenId] = useState<string | null>(null)
 
@@ -67,7 +69,7 @@ export function ExpenseList({
     return (
       <section className="border-t border-[var(--border)] px-4 py-10 text-center">
         <p className="text-[15px] text-[var(--text-2)]">
-          {filterCategory ? 'В этой категории пока пусто.' : 'За период трат нет.'}
+          {filterCategory ? t(locale, 'web.emptyCategory') : t(locale, 'web.emptyPeriod')}
         </p>
       </section>
     )
@@ -90,7 +92,7 @@ export function ExpenseList({
         return (
           <div key={key}>
             <div className="sticky top-[44px] z-10 flex items-baseline justify-between bg-[var(--bg)]/95 px-4 py-2 backdrop-blur">
-              <span className="eyebrow">{dayHeading(key, timezone, now)}</span>
+              <span className="eyebrow">{dayHeading(key, timezone, now, locale)}</span>
               <span className="num text-[13px] text-[var(--text-2)]">
                 {formatMoney(dayTotal, baseCurrency)}
               </span>
@@ -107,6 +109,7 @@ export function ExpenseList({
                   onOpen={() => setOpenId(openId === expense.id ? null : expense.id)}
                   onEdit={onEdit}
                   onDelete={onDelete}
+                  locale={locale}
                 />
               ))}
             </ul>
@@ -125,6 +128,7 @@ function ExpenseRow({
   onOpen,
   onEdit,
   onDelete,
+  locale,
 }: {
   expense: Expense
   timezone: string
@@ -133,6 +137,7 @@ function ExpenseRow({
   onOpen: () => void
   onEdit: (id: string, patch: Record<string, unknown>) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  locale: Locale
 }) {
   const category = categoryBySlug(expense.category)
   const [amount, setAmount] = useState(String(fromMinor(expense.amountMinor, expense.currency)))
@@ -166,10 +171,10 @@ function ExpenseRow({
         />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[15px] text-[var(--text-1)]">
-            {expense.description || category.name}
+            {expense.description || categoryName(expense.category, locale)}
           </span>
           <span className="block text-[13px] text-[var(--text-3)]">
-            {category.name} · {timeLabel(expense.spentAt, timezone)}
+            {categoryName(expense.category, locale)} · {timeLabel(expense.spentAt, timezone)}
           </span>
         </span>
         <span className="num shrink-0 text-right text-[15px] text-[var(--text-1)]">
@@ -186,7 +191,7 @@ function ExpenseRow({
         <div className="bg-[var(--surface)] px-4 pb-4 pt-1">
           <div className="mb-3 flex gap-2">
             <label className="flex-1">
-              <span className="eyebrow mb-1 block">Сумма</span>
+              <span className="eyebrow mb-1 block">{t(locale, 'web.amount')}</span>
               <input
                 type="text"
                 inputMode="decimal"
@@ -200,7 +205,7 @@ function ExpenseRow({
               />
             </label>
             <label className="flex-[2]">
-              <span className="eyebrow mb-1 block">Описание</span>
+              <span className="eyebrow mb-1 block">{t(locale, 'web.description')}</span>
               <input
                 type="text"
                 value={description}
@@ -213,7 +218,7 @@ function ExpenseRow({
             </label>
           </div>
 
-          <span className="eyebrow mb-2 block">Категория</span>
+          <span className="eyebrow mb-2 block">{t(locale, 'web.category')}</span>
           <div className="no-scrollbar -mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1">
             {CATEGORIES.map((option) => {
               const active = option.slug === expense.category
@@ -230,7 +235,7 @@ function ExpenseRow({
                   }}
                 >
                   <span aria-hidden>{option.emoji}</span>
-                  {option.name}
+                  {categoryName(option.slug, locale)}
                 </button>
               )
             })}
@@ -238,14 +243,14 @@ function ExpenseRow({
 
           <div className="flex items-center justify-between">
             <span className="text-[12px] text-[var(--text-3)]">
-              {saving ? 'сохраняю…' : 'изменения сохраняются сразу'}
+              {saving ? t(locale, 'web.saving') : t(locale, 'web.autosave')}
             </span>
             <button
               type="button"
               onClick={() => void onDelete(expense.id)}
               className="h-9 rounded-[var(--r-sm)] px-3 text-[13px] font-medium text-[var(--neg)]"
             >
-              Удалить
+              {t(locale, 'web.delete')}
             </button>
           </div>
         </div>

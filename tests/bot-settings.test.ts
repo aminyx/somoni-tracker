@@ -17,33 +17,88 @@ const source = readFileSync(new URL('../src/bot/index.ts', import.meta.url), 'ut
  * значит экранировать скобки дважды, и одна потерянная косая черта тихо
  * превращает `[string, string]` в класс символов, а проверку — в ничто.
  */
-function pairs(name: string): Array<[string, string]> {
+function arrayBody(name: string): string {
   const start = source.indexOf(`const ${name}`)
   assert.notEqual(start, -1, `не нашёл ${name} в src/bot/index.ts`)
   const open = source.indexOf('[', source.indexOf('=', start))
   const close = source.indexOf('\n]', open)
   assert.ok(open > 0 && close > open, `не разобрал границы ${name}`)
-  const body = source.slice(open, close)
+  return source.slice(open, close)
+}
+
+function pairs(name: string): Array<[string, string]> {
+  const body = arrayBody(name)
   return [...body.matchAll(/\['([^']+)',\s*'([^']+)'\]/g)].map((m) => [m[1]!, m[2]!])
 }
 
+interface City {
+  zone: string
+  currency: string
+  names: Record<string, string>
+}
+
+/**
+ * Города описаны объектами: зона, валюта страны и название на каждом языке.
+ * Разбираем сам исходник — так проверка ловит и то, чего нет в типах:
+ * забытый язык в названии или несуществующую валюту.
+ */
+function cities(): City[] {
+  const body = arrayBody('TIMEZONE_CHOICES')
+  const out: City[] = []
+  for (const entry of body.split('{ zone:').slice(1)) {
+    const zone = /^\s*'([^']+)'/.exec(entry)?.[1]
+    const currency = /currency:\s*'([^']+)'/.exec(entry)?.[1]
+    assert.ok(zone && currency, `не разобрал город: ${entry.slice(0, 60)}`)
+    const names: Record<string, string> = {}
+    const namesPart = entry.slice(entry.indexOf('name:'))
+    for (const m of namesPart.matchAll(/([a-z]{2}):\s*'([^']+)'/g)) names[m[1]!] = m[2]!
+    out.push({ zone: zone!, currency: currency!, names })
+  }
+  return out
+}
+
 test('города в списке — настоящие зоны IANA', () => {
-  const zones = pairs('TIMEZONE_CHOICES')
-  assert.ok(zones.length >= 8, `городов мало: ${zones.length}`)
-  const broken = zones.filter(([, zone]) => safeTimeZone(zone, '') !== zone)
-  assert.deepEqual(broken, [], `неизвестные зоны: ${broken.map((z) => z[1]).join(', ')}`)
+  const list = cities()
+  assert.ok(list.length >= 8, `городов мало: ${list.length}`)
+  const broken = list.filter((c) => safeTimeZone(c.zone, '') !== c.zone)
+  assert.deepEqual(broken, [], `неизвестные зоны: ${broken.map((c) => c.zone).join(', ')}`)
 })
 
 test('Душанбе есть и стоит первым', () => {
-  const zones = pairs('TIMEZONE_CHOICES')
-  assert.equal(zones[0]![1], 'Asia/Dushanbe', 'продукт для Таджикистана — Душанбе первым')
+  assert.equal(cities()[0]!.zone, 'Asia/Dushanbe', 'продукт для Таджикистана — Душанбе первым')
+})
+
+test('у каждого города есть название на всех трёх языках', () => {
+  for (const city of cities()) {
+    for (const locale of ['ru', 'tg', 'en']) {
+      assert.ok(city.names[locale], `${city.zone}: нет названия на ${locale}`)
+    }
+  }
+})
+
+test('английские названия городов написаны латиницей', () => {
+  // Иначе в английском интерфейсе список выглядит как «Moscow, Душанбе».
+  for (const city of cities()) {
+    assert.ok(
+      /^[A-Za-z][A-Za-z '-]*$/.test(city.names.en!),
+      `${city.zone}: английское название «${city.names.en}» не латиницей`,
+    )
+  }
+})
+
+test('валюта страны у каждого города существует', () => {
+  // Мастер первого запуска ставит её без спроса: ошибка здесь означает
+  // отчёты в валюте, которой нет.
+  for (const city of cities()) {
+    assert.ok(isValidCurrency(city.currency), `${city.zone}: валюта ${city.currency} неизвестна`)
+  }
 })
 
 test('смещение считается для каждого города', () => {
-  for (const [city, zone] of pairs('TIMEZONE_CHOICES')) {
-    const offset = zoneOffsetMs(Date.now(), zone)
-    assert.ok(Number.isFinite(offset), `${city}: смещение не посчиталось`)
-    assert.ok(Math.abs(offset) <= 14 * 3600_000, `${city}: неправдоподобное смещение`)
+  for (const city of cities()) {
+    const offset = zoneOffsetMs(Date.now(), city.zone)
+    assert.ok(Number.isFinite(offset), `${city.zone}: смещение не посчиталось`)
+    assert.ok(Math.abs(offset) <= 14 * 3600_000, `${city.zone}: неправдоподобное смещение`)
   }
 })
 
@@ -59,8 +114,9 @@ test('сомони предлагается первым', () => {
 })
 
 test('callback_data кнопок укладывается в лимит Telegram', () => {
-  for (const [, zone] of pairs('TIMEZONE_CHOICES')) {
-    assert.ok(Buffer.byteLength(`tz:${zone}`, 'utf8') <= 64, `длинное: tz:${zone}`)
+  for (const city of cities()) {
+    assert.ok(Buffer.byteLength(`tz:${city.zone}`, 'utf8') <= 64, `длинное: tz:${city.zone}`)
+    assert.ok(Buffer.byteLength(`wtz:${city.zone}`, 'utf8') <= 64, `длинное: wtz:${city.zone}`)
   }
   for (const [, code] of pairs('CURRENCY_CHOICES')) {
     assert.ok(Buffer.byteLength(`cur:${code}`, 'utf8') <= 64)
@@ -68,29 +124,36 @@ test('callback_data кнопок укладывается в лимит Telegram
 })
 
 test('у каждой кнопки настроек есть обработчик', () => {
-  for (const cb of ['settz', 'setcur']) {
+  for (const cb of ['settz', 'setcur', 'setlang']) {
     assert.ok(source.includes(`bot.callbackQuery('${cb}'`), `нет обработчика для ${cb}`)
   }
   assert.ok(source.includes('bot.callbackQuery(/^tz:'), 'нет обработчика выбора зоны')
   assert.ok(source.includes('bot.callbackQuery(/^cur:'), 'нет обработчика выбора валюты')
 })
 
+test('у мастера первого запуска есть оба шага', () => {
+  // Мастер живёт на своих префиксах: если обработчик потеряется, кнопка
+  // в приветствии будет нажиматься вхолостую и первый экран станет тупиком.
+  assert.ok(source.includes('bot.callbackQuery(/^wlang:'), 'нет шага выбора языка')
+  assert.ok(source.includes('bot.callbackQuery(/^wtz:'), 'нет шага выбора города')
+  assert.ok(source.includes('wizardLanguageKeyboard'), 'приветствие не показывает выбор языка')
+})
+
 test('регулярка зоны принимает все зоны из списка', () => {
   // Литерал вырезается по границам «bot.callbackQuery(» … «, async»:
   // искать его выражением нельзя — внутри есть экранированная косая черта,
   // и поиск «до первого /» обрывает шаблон на середине.
-  const start = source.indexOf('bot.callbackQuery(/^tz:')
-  assert.notEqual(start, -1, 'не нашёл обработчик выбора зоны')
-  const open = source.indexOf('/', start + 'bot.callbackQuery('.length - 1) + 1
-  const end = source.indexOf(', async', start)
-  const literal = source.slice(open, end).trim()
-  const body = literal.replace(/\/$/, '')
-  const re = new RegExp(body)
+  for (const prefix of ['tz:', 'wtz:']) {
+    const start = source.indexOf(`bot.callbackQuery(/^${prefix}`)
+    assert.notEqual(start, -1, `не нашёл обработчик ${prefix}`)
+    const open = source.indexOf('/', start + 'bot.callbackQuery('.length - 1) + 1
+    const end = source.indexOf(', async', start)
+    const literal = source.slice(open, end).trim()
+    const re = new RegExp(literal.replace(/\/$/, ''))
 
-  for (const [city, zone] of pairs('TIMEZONE_CHOICES')) {
-    assert.ok(re.test(`tz:${zone}`), `${city}: зона ${zone} не подходит под регулярку`)
+    for (const city of cities()) {
+      assert.ok(re.test(`${prefix}${city.zone}`), `${prefix}${city.zone} не подходит под регулярку`)
+    }
+    assert.ok(!re.test(`${prefix}`), `${prefix}: пустая зона проходит`)
   }
-  // И наоборот: мусор не должен проходить.
-  assert.ok(!re.test('tz:../../etc/passwd'))
-  assert.ok(!re.test('tz:'))
 })

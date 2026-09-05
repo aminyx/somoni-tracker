@@ -4,10 +4,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Expense } from '@/lib/db/schema'
 import { formatMoney } from '@/lib/money'
 import type { PeriodSummary } from '@/lib/stats'
+import {
+  EXAMPLES,
+  MONTHS_GENITIVE,
+  MONTHS_NOMINATIVE,
+  t,
+  tPlural,
+  type Locale,
+} from '@/lib/i18n'
 import { dayKey, partsInZone, type Period } from '@/lib/time'
 import { CategoryBlock } from './CategoryBlock'
 import { DayRail } from './DayRail'
 import { ExpenseList } from './ExpenseList'
+import { ThemeToggle } from './ThemeToggle'
 
 export interface DashboardData {
   user: {
@@ -16,6 +25,7 @@ export interface DashboardData {
     timezone: string
     baseCurrency: string
     firstExpenseAt: number | null
+    locale: Locale
   }
   period: Period
   at: number
@@ -24,29 +34,34 @@ export interface DashboardData {
   now: number
 }
 
-const PERIOD_LABELS: Array<{ value: Period; label: string; title: string }> = [
-  { value: 'day', label: 'Д', title: 'День' },
-  { value: 'week', label: 'Н', title: 'Неделя' },
-  { value: 'month', label: 'М', title: 'Месяц' },
-]
-
-const MONTHS_NOMINATIVE = [
-  'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
-  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
-]
-const MONTHS_GENITIVE = [
-  'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
-]
+/** Переключатель периода. Подпись — первая буква слова на своём языке. */
+function periodOptions(locale: Locale): Array<{ value: Period; label: string; title: string }> {
+  const titles = {
+    day: t(locale, 'web.day'),
+    week: t(locale, 'web.week'),
+    month: t(locale, 'web.month'),
+  }
+  return (['day', 'week', 'month'] as const).map((value) => ({
+    value,
+    label: titles[value].slice(0, 1).toUpperCase(),
+    title: titles[value],
+  }))
+}
 
 /** «1–3 сентября», «Сентябрь 2026» — период называется датами, а не словом. */
-function periodTitle(period: Period, summary: PeriodSummary, timezone: string): string {
+function periodTitle(
+  period: Period,
+  summary: PeriodSummary,
+  timezone: string,
+  locale: Locale,
+): string {
   const from = partsInZone(summary.range.start, timezone)
   const to = partsInZone(summary.range.end - 1000, timezone)
-  if (period === 'day') return `${from.day} ${MONTHS_GENITIVE[from.month - 1]}`
-  if (period === 'month') return `${MONTHS_NOMINATIVE[from.month - 1]} ${from.year}`
-  if (from.month === to.month) return `${from.day}–${to.day} ${MONTHS_GENITIVE[from.month - 1]}`
-  return `${from.day} ${MONTHS_GENITIVE[from.month - 1]} — ${to.day} ${MONTHS_GENITIVE[to.month - 1]}`
+  const gen = MONTHS_GENITIVE[locale]
+  if (period === 'day') return `${from.day} ${gen[from.month - 1]}`
+  if (period === 'month') return `${MONTHS_NOMINATIVE[locale][from.month - 1]} ${from.year}`
+  if (from.month === to.month) return `${from.day}–${to.day} ${gen[from.month - 1]}`
+  return `${from.day} ${gen[from.month - 1]} — ${to.day} ${gen[to.month - 1]}`
 }
 
 /**
@@ -54,23 +69,23 @@ function periodTitle(period: Period, summary: PeriodSummary, timezone: string): 
  * прошедших дней, и подпись обязана это проговаривать, иначе цифра выглядит
  * как сопоставление целых месяцев.
  */
-function elapsedLabel(period: Period, summary: PeriodSummary, timezone: string): string {
-  const days = summary.elapsedDays
-  if (days <= 0) return ''
-  const from = partsInZone(summary.range.start, timezone)
+function elapsedLabel(
+  period: Period,
+  summary: PeriodSummary,
+  timezone: string,
+  locale: Locale,
+): string {
+  const count = summary.elapsedDays
+  if (count <= 0) return ''
+  const days = `${count} ${tPlural(locale, 'plural.day', count)}`
   if (period === 'month') {
-    return `за те же ${days} ${plural(days, ['день', 'дня', 'дней'])} ${MONTHS_GENITIVE[(from.month + 10) % 12]}`
+    const from = partsInZone(summary.range.start, timezone)
+    return t(locale, 'web.sameDaysMonth', {
+      days,
+      month: MONTHS_GENITIVE[locale][(from.month + 10) % 12]!,
+    })
   }
-  return `за те же ${days} ${plural(days, ['день', 'дня', 'дней'])} прошлого периода`
-}
-
-function plural(count: number, forms: [string, string, string]): string {
-  const n = Math.abs(count) % 100
-  const n1 = n % 10
-  if (n > 10 && n < 20) return forms[2]
-  if (n1 > 1 && n1 < 5) return forms[1]
-  if (n1 === 1) return forms[0]
-  return forms[2]
+  return t(locale, 'web.sameDaysPeriod', { days })
 }
 
 export function Dashboard({ initial }: { initial: DashboardData }) {
@@ -160,7 +175,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
     }
     setUndo({
       id,
-      label: target?.description || 'Трата',
+      label: target?.description || t(L, 'web.expense'),
     })
     if (undoTimer.current) clearTimeout(undoTimer.current)
     undoTimer.current = setTimeout(() => {
@@ -186,6 +201,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
   }, [])
 
   const { summary, user } = data
+  const L = user.locale
   const todayKey = dayKey(data.now, user.timezone)
 
   // Выбранный день пересчитывает верхние блоки, но не перезагружает период:
@@ -237,28 +253,28 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
             type="button"
             onClick={() => step(-1)}
             className="flex size-11 items-center justify-center text-[var(--text-2)]"
-            aria-label="Предыдущий период"
+            aria-label={t(L, 'web.prevPeriod')}
           >
             ‹
           </button>
           <span className="px-1 text-[15px] font-semibold text-[var(--text-1)]">
             {selectedDay
-              ? `${Number(selectedDay.split('-')[2])} ${MONTHS_GENITIVE[Number(selectedDay.split('-')[1]) - 1]}`
-              : periodTitle(period, summary, user.timezone)}
+              ? `${Number(selectedDay.split('-')[2])} ${MONTHS_GENITIVE[L][Number(selectedDay.split('-')[1]) - 1]}`
+              : periodTitle(period, summary, user.timezone, L)}
           </span>
           <button
             type="button"
             onClick={() => step(1)}
             disabled={summary.range.end > Date.now()}
             className="flex size-11 items-center justify-center text-[var(--text-2)] disabled:opacity-35"
-            aria-label="Следующий период"
+            aria-label={t(L, 'web.nextPeriod')}
           >
             ›
           </button>
         </div>
 
         <div className="flex gap-1 pr-1">
-          {PERIOD_LABELS.map((option) => (
+          {periodOptions(L).map((option) => (
             <button
               key={option.value}
               type="button"
@@ -279,7 +295,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
 
       <section className="px-4 pb-5 pt-6">
         <div className="eyebrow mb-2">
-          {selectedDay ? 'Потрачено за день' : 'Потрачено'}
+          {selectedDay ? t(L, 'web.spentDay') : t(L, 'web.spent')}
         </div>
         <div className="flex items-baseline gap-2">
           <span className="num text-[40px] font-bold leading-none text-[var(--text-1)]">
@@ -303,15 +319,15 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
             </span>
           ) : delta !== null ? (
             <span className="inline-flex h-[22px] items-center rounded-[var(--r-sm)] bg-[var(--surface-2)] px-2 text-[var(--text-2)]">
-              ≈ так же
+              {t(L, 'web.almostSame')}
             </span>
           ) : null}
 
           <span className="text-[var(--text-2)]">
             {delta !== null
-              ? `${elapsedLabel(period, summary, user.timezone)} — ${formatMoney(previous, user.baseCurrency)}`
+              ? `${elapsedLabel(period, summary, user.timezone, L)} — ${formatMoney(previous, user.baseCurrency)}`
               : heroCount > 0
-                ? `${heroCount} ${plural(heroCount, ['трата', 'траты', 'трат'])}`
+                ? `${heroCount} ${tPlural(L, 'plural.expense', heroCount)}`
                 : ''}
           </span>
         </div>
@@ -322,13 +338,13 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
             onClick={() => setSelectedDay(null)}
             className="mt-3 text-[13px] text-[var(--accent-ink)] underline underline-offset-4"
           >
-            показать весь период
+            {t(L, 'web.showAll')}
           </button>
         ) : null}
       </section>
 
       {isEmpty ? (
-        <EmptyState />
+        <EmptyState locale={L} />
       ) : (
         <>
           {period !== 'day' ? (
@@ -338,6 +354,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
               todayKey={todayKey}
               selectedDay={selectedDay}
               onSelectDay={selectDay}
+              locale={L}
             />
           ) : null}
 
@@ -349,6 +366,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
             onToggle={() => setExpandedCategories((v) => !v)}
             selected={selectedCategory}
             onSelect={setSelectedCategory}
+            locale={L}
           />
 
           <ExpenseList
@@ -363,6 +381,7 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
             filterCategory={selectedCategory}
             onEdit={editExpense}
             onDelete={removeExpense}
+            locale={L}
           />
 
           <footer className="flex items-center justify-between px-4 py-6 text-[13px]">
@@ -370,26 +389,31 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
               href={`/api/export?period=${period}`}
               className="text-[var(--text-2)] underline underline-offset-4"
             >
-              Скачать CSV
+              {t(L, 'web.downloadCsv')}
             </a>
-            <form action="/api/auth/logout" method="post">
-              <button type="submit" className="text-[var(--text-3)]">
-                Выйти
-              </button>
-            </form>
+            <div className="flex items-center gap-4">
+              <ThemeToggle locale={L} />
+              <form action="/api/auth/logout" method="post">
+                <button type="submit" className="text-[var(--text-3)]">
+                  {t(L, 'web.logout')}
+                </button>
+              </form>
+            </div>
           </footer>
         </>
       )}
 
       {undo ? (
         <div className="toast-in fixed inset-x-4 bottom-6 z-30 mx-auto flex max-w-md items-center justify-between rounded-[var(--r-lg)] bg-[var(--surface-2)] px-4 py-3 shadow-lg">
-          <span className="truncate text-[14px] text-[var(--text-1)]">Удалено: {undo.label}</span>
+          <span className="truncate text-[14px] text-[var(--text-1)]">
+            {t(L, 'web.deletedToast', { label: undo.label })}
+          </span>
           <button
             type="button"
             onClick={() => void restore(undo.id)}
             className="ml-3 shrink-0 text-[14px] font-semibold text-[var(--accent-ink)]"
           >
-            Вернуть
+            {t(L, 'web.restore')}
           </button>
         </div>
       ) : null}
@@ -397,15 +421,15 @@ export function Dashboard({ initial }: { initial: DashboardData }) {
   )
 }
 
-function EmptyState() {
+function EmptyState({ locale }: { locale: Locale }) {
   return (
     <section className="flex flex-col items-center px-6 py-16 text-center">
       <div className="num mb-5 text-[48px] leading-none text-[var(--text-3)]">смн</div>
       <h2 className="mb-2 text-[17px] font-semibold text-[var(--text-1)]">
-        Здесь появятся траты
+        {t(locale, 'web.emptyTitle')}
       </h2>
       <p className="max-w-[280px] text-[15px] leading-relaxed text-[var(--text-2)]">
-        Напишите боту «кофе 350» — и она окажется на этом экране через секунду.
+        {t(locale, 'web.emptyBody', { example: EXAMPLES[locale].one })}
       </p>
     </section>
   )

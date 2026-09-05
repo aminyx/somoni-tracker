@@ -204,20 +204,33 @@ function mainKeyboard(locale: Locale) {
  * траты — ровно то, чего просят не делать: «трата добавляется одним
  * сообщением».
  */
-const TIMEZONE_CHOICES: Array<[string, string]> = [
-  ['Душанбе', 'Asia/Dushanbe'],
-  ['Ташкент', 'Asia/Tashkent'],
-  ['Алматы', 'Asia/Almaty'],
-  ['Бишкек', 'Asia/Bishkek'],
-  ['Москва', 'Europe/Moscow'],
-  ['Екатеринбург', 'Asia/Yekaterinburg'],
-  ['Новосибирск', 'Asia/Novosibirsk'],
-  ['Баку', 'Asia/Baku'],
-  ['Стамбул', 'Europe/Istanbul'],
-  ['Дубай', 'Asia/Dubai'],
-  ['Минск', 'Europe/Minsk'],
-  ['Берлин', 'Europe/Berlin'],
+interface CityChoice {
+  zone: string
+  /** Название города на каждом языке: в английском интерфейсе «Москва» лишняя. */
+  name: Record<Locale, string>
+  /** Валюта страны — подставляется сразу после выбора города. */
+  currency: string
+}
+
+const TIMEZONE_CHOICES: CityChoice[] = [
+  { zone: 'Asia/Dushanbe', currency: 'TJS', name: { ru: 'Душанбе', tg: 'Душанбе', en: 'Dushanbe' } },
+  { zone: 'Asia/Tashkent', currency: 'UZS', name: { ru: 'Ташкент', tg: 'Тошканд', en: 'Tashkent' } },
+  { zone: 'Asia/Almaty', currency: 'KZT', name: { ru: 'Алматы', tg: 'Алмато', en: 'Almaty' } },
+  { zone: 'Asia/Bishkek', currency: 'KGS', name: { ru: 'Бишкек', tg: 'Бишкек', en: 'Bishkek' } },
+  { zone: 'Europe/Moscow', currency: 'RUB', name: { ru: 'Москва', tg: 'Маскав', en: 'Moscow' } },
+  { zone: 'Asia/Yekaterinburg', currency: 'RUB', name: { ru: 'Екатеринбург', tg: 'Екатеринбург', en: 'Yekaterinburg' } },
+  { zone: 'Asia/Novosibirsk', currency: 'RUB', name: { ru: 'Новосибирск', tg: 'Новосибирск', en: 'Novosibirsk' } },
+  { zone: 'Asia/Baku', currency: 'AZN', name: { ru: 'Баку', tg: 'Боку', en: 'Baku' } },
+  { zone: 'Europe/Istanbul', currency: 'TRY', name: { ru: 'Стамбул', tg: 'Истанбул', en: 'Istanbul' } },
+  { zone: 'Asia/Dubai', currency: 'AED', name: { ru: 'Дубай', tg: 'Дубай', en: 'Dubai' } },
+  { zone: 'Europe/Minsk', currency: 'BYN', name: { ru: 'Минск', tg: 'Минск', en: 'Minsk' } },
+  { zone: 'Europe/Berlin', currency: 'EUR', name: { ru: 'Берлин', tg: 'Берлин', en: 'Berlin' } },
 ]
+
+/** Название города на языке пользователя; для чужой зоны — сама зона. */
+function cityName(zone: string, locale: Locale): string {
+  return TIMEZONE_CHOICES.find((c) => c.zone === zone)?.name[locale] ?? zone
+}
 
 /** Валюты для быстрого выбора. Остальные — командой, их сотни. */
 const CURRENCY_CHOICES: Array<[string, string]> = [
@@ -239,11 +252,14 @@ function utcOffsetLabel(zone: string): string {
   return `UTC${sign}${Number.isInteger(hours) ? hours : hours.toFixed(1)}`
 }
 
-function timezoneKeyboard(current: string): InlineKeyboard {
+function timezoneKeyboard(current: string, locale: Locale, prefix = 'tz'): InlineKeyboard {
   const keyboard = new InlineKeyboard()
-  TIMEZONE_CHOICES.forEach(([city, zone], index) => {
-    const mark = zone === current ? '• ' : ''
-    keyboard.text(`${mark}${city} (${utcOffsetLabel(zone)})`, `tz:${zone}`)
+  TIMEZONE_CHOICES.forEach((city, index) => {
+    const mark = city.zone === current ? '• ' : ''
+    keyboard.text(
+      `${mark}${city.name[locale]} (${utcOffsetLabel(city.zone)})`,
+      `${prefix}:${city.zone}`,
+    )
     if (index % 2 === 1) keyboard.row()
   })
   if (TIMEZONE_CHOICES.length % 2 === 1) keyboard.row()
@@ -255,6 +271,16 @@ function languageKeyboard(current: Locale): InlineKeyboard {
   for (const locale of LOCALES) {
     const mark = locale === current ? '• ' : ''
     keyboard.text(`${mark}${LOCALE_NAMES[locale]}`, `lang:${locale}`).row()
+  }
+  return keyboard
+}
+
+/** Шаг 1: язык. Отличается от настроек префиксом — дальше идёт выбор города. */
+function wizardLanguageKeyboard(current: Locale): InlineKeyboard {
+  const keyboard = new InlineKeyboard()
+  for (const locale of LOCALES) {
+    const mark = locale === current ? '• ' : ''
+    keyboard.text(`${mark}${LOCALE_NAMES[locale]}`, `wlang:${locale}`).row()
   }
   return keyboard
 }
@@ -313,6 +339,16 @@ bot.command('start', async (ctx) => {
   // Отдельным сообщением: показать кнопки и подсказать формат ввода.
   // Reply-клавиатуру нельзя послать вместе с inline-кнопкой в одном сообщении.
   await ctx.reply(t(L, 'start.buttons'), { reply_markup: mainKeyboard(L) })
+
+  // Мастер: язык → город → валюта. Он идёт ПОСЛЕ приветствия и ничего не
+  // блокирует: трату можно написать, не пройдя ни одного шага, — сообщение
+  // с кнопками просто останется в переписке. Так выполняется и просьба
+  // спросить язык со страной, и главное требование конкурса: трата
+  // добавляется одним сообщением, без обязательной анкеты.
+  await ctx.reply(t(L, 'wizard.language'), {
+    parse_mode: 'HTML',
+    reply_markup: wizardLanguageKeyboard(L),
+  })
 })
 
 bot.command('help', async (ctx) => {
@@ -986,6 +1022,61 @@ bot.callbackQuery(/^ocr:(\d+)$/, async (ctx) => {
 
 bot.callbackQuery('noop', (ctx) => ctx.answerCallbackQuery())
 
+// Шаг 1 → шаг 2. Ответ уже на новом языке: иначе смена выглядит как отказ.
+bot.callbackQuery(/^wlang:([a-z]{2})$/, async (ctx) => {
+  const user = currentUser(ctx)
+  if (!user) return
+  const code = ctx.match[1]!
+  if (!isLocale(code)) {
+    await ctx.answerCallbackQuery()
+    return
+  }
+  setLocale(user.id, code)
+  await ctx.editMessageText(t(code, 'wizard.city'), {
+    parse_mode: 'HTML',
+    reply_markup: timezoneKeyboard(user.timezone, code, 'wtz'),
+  })
+  // Клавиатура под полем ввода подписана на прежнем языке — присылаем новую.
+  await ctx.reply(t(code, 'start.buttons'), { reply_markup: mainKeyboard(code) })
+  await ctx.answerCallbackQuery({ text: LOCALE_NAMES[code] })
+})
+
+// Шаг 2 → итог. Валюта берётся из страны города: спрашивать её отдельно
+// значило бы третий обязательный экран ради ответа, который и так известен.
+bot.callbackQuery(/^wtz:(.+)$/, async (ctx) => {
+  const user = currentUser(ctx)
+  if (!user) return
+  const L = localeOf(user)
+  const zone = safeTimeZone(ctx.match[1]!, '')
+  if (!zone) {
+    await ctx.answerCallbackQuery({ text: t(L, 'settings.unknownZone') })
+    return
+  }
+  setTimezone(user.id, zone)
+
+  const city = TIMEZONE_CHOICES.find((c) => c.zone === zone)
+  // Валюту меняем только у нового пользователя: если он уже успел записать
+  // траты и выбрать валюту сам, мастер не должен её перебивать.
+  const currency =
+    city && user.firstExpenseAt === null && setBaseCurrency(user.id, city.currency)
+      ? city.currency
+      : user.baseCurrency
+
+  await ctx.editMessageText(
+    t(L, 'wizard.done', {
+      city: esc(cityName(zone, L)),
+      offset: utcOffsetLabel(zone),
+      currency: esc(currency),
+      example: esc(EXAMPLES[L].one),
+    }),
+    {
+      parse_mode: 'HTML',
+      reply_markup: new InlineKeyboard().text(t(L, 'wizard.changeCurrency'), 'setcur'),
+    },
+  )
+  await ctx.answerCallbackQuery({ text: cityName(zone, L) })
+})
+
 bot.callbackQuery('setlang', async (ctx) => {
   const user = currentUser(ctx)
   if (!user) return
@@ -1019,7 +1110,7 @@ bot.callbackQuery('settz', async (ctx) => {
   if (!user) return
   await ctx.editMessageText(t(localeOf(user), 'settings.pickTimezone'), {
     parse_mode: 'HTML',
-    reply_markup: timezoneKeyboard(user.timezone),
+    reply_markup: timezoneKeyboard(user.timezone, localeOf(user)),
   })
   await ctx.answerCallbackQuery()
 })
@@ -1044,12 +1135,11 @@ bot.callbackQuery(/^tz:([A-Za-z_]+\/[A-Za-z_]+)$/, async (ctx) => {
     return
   }
   setTimezone(user.id, zone)
-  const city = TIMEZONE_CHOICES.find(([, z]) => z === zone)?.[0] ?? zone
   await ctx.editMessageText(
-    t(L, 'settings.timezoneSet', { city: esc(city), offset: utcOffsetLabel(zone) }),
+    t(L, 'settings.timezoneSet', { city: esc(cityName(zone, L)), offset: utcOffsetLabel(zone) }),
     { parse_mode: 'HTML' },
   )
-  await ctx.answerCallbackQuery({ text: city })
+  await ctx.answerCallbackQuery({ text: cityName(zone, L) })
 })
 
 bot.callbackQuery(/^cur:([A-Z]{3})$/, async (ctx) => {

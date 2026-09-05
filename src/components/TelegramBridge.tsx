@@ -8,8 +8,12 @@ import { useEffect } from 'react'
  * Делает три вещи и ничего больше:
  *  • разворачивает окно на всю высоту и отключает свайп-закрытие, иначе
  *    вертикальная прокрутка ленты вырывает приложение из чата;
- *  • красит шапку и фон Telegram в цвет панели, чтобы не было шва;
- *  • подхватывает светлую/тёмную тему клиента.
+ *  • красит шапку и фон Telegram в цвет панели, чтобы не было шва.
+ *
+ * Тему клиента он больше НЕ навязывает. Раньше здесь стояло обратное:
+ * панель перекрашивалась в тему Telegram, и у человека со светлым клиентом
+ * она открывалась светлой, а нажатие на переключатель отменялось следующим
+ * событием themeChanged. Теперь направление одно — от панели к Telegram.
  *
  * Вход через initData здесь НЕ делается: панель открывается по ссылке из
  * бота, и сессия уже стоит. Если Mini App открыли без сессии, этим займётся
@@ -72,15 +76,24 @@ export function TelegramBridge({ authenticated }: { authenticated: boolean }) {
     app.expand()
     app.disableVerticalSwipes?.()
 
-    const applyTheme = () => {
-      const scheme = app.colorScheme === 'light' ? 'light' : 'dark'
-      document.documentElement.setAttribute('data-theme', scheme)
-      const color = scheme === 'light' ? BG_LIGHT : BG_DARK
+    // Красим Telegram под панель, а не панель под Telegram.
+    const paint = () => {
+      const light = document.documentElement.dataset.theme === 'light'
+      const color = light ? BG_LIGHT : BG_DARK
       app.setHeaderColor?.(color)
       app.setBackgroundColor?.(color)
     }
-    applyTheme()
-    app.onEvent?.('themeChanged', applyTheme)
+    paint()
+    // Telegram сбрасывает свои цвета при смене темы клиента — возвращаем свои.
+    app.onEvent?.('themeChanged', paint)
+
+    // Переключатель темы меняет data-theme на <html>; ловим это и
+    // перекрашиваем шапку, иначе над панелью останется полоса чужого цвета.
+    const observer = new MutationObserver(paint)
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    })
 
     // Панель открыли внутри Telegram, но сессии нет — например, через
     // кнопку меню. Меняем подписанные initData на сессию и перезагружаем.
@@ -93,6 +106,8 @@ export function TelegramBridge({ authenticated }: { authenticated: boolean }) {
         if (response.ok) window.location.replace('/app')
       })
     }
+
+    return () => observer.disconnect()
   }, [authenticated])
 
   return null

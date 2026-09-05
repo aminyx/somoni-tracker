@@ -1,6 +1,7 @@
 'use client'
 
-import { categoryBySlug } from '@/lib/categories'
+import { categoryBySlug, categoryName } from '@/lib/categories'
+import { t, tPlural, type Locale } from '@/lib/i18n'
 import { formatMoney } from '@/lib/money'
 import type { CategoryTotal } from '@/lib/stats'
 
@@ -24,6 +25,7 @@ interface Props {
   onToggle: () => void
   onSelect: (slug: string | null) => void
   selected: string | null
+  locale: Locale
 }
 
 const VISIBLE = 4
@@ -36,6 +38,7 @@ export function CategoryBlock({
   onToggle,
   onSelect,
   selected,
+  locale,
 }: Props) {
   if (categories.length === 0) return null
 
@@ -46,9 +49,9 @@ export function CategoryBlock({
   return (
     <section className="border-t border-[var(--border)] px-4 pb-2 pt-5">
       <header className="mb-3 flex items-baseline justify-between">
-        <h2 className="eyebrow">Категории</h2>
+        <h2 className="eyebrow">{t(locale, 'web.categories')}</h2>
         <span className="num text-[12px] text-[var(--text-2)]">
-          {totalCount} {plural(totalCount)}
+          {totalCount} {tPlural(locale, 'plural.expense', totalCount)}
         </span>
       </header>
 
@@ -96,7 +99,7 @@ export function CategoryBlock({
                   className="min-w-0 truncate text-[15px] text-[var(--text-1)]"
                   style={{ opacity: selected && !isSelected ? 0.5 : 1 }}
                 >
-                  {category.name}
+                  {categoryName(row.category, locale)}
                 </span>
                 {/* Отточие: ведёт глаз через пустоту от названия к сумме.
                     Устройство из бумажного чека, и оно делает реальную работу
@@ -122,8 +125,11 @@ export function CategoryBlock({
         >
           <span>
             {expanded
-              ? 'свернуть'
-              : `ещё ${rest.length} ${plural(rest.length, ['категория', 'категории', 'категорий'])}`}
+              ? t(locale, 'web.collapse')
+              : t(locale, 'web.moreCategories', {
+                  count: rest.length,
+                  plural: tPlural(locale, 'plural.category', rest.length),
+                })}
           </span>
           <span className="num text-[13px] text-[var(--text-3)]">
             {expanded ? '' : formatMoney(restTotal, currency)}
@@ -132,13 +138,4 @@ export function CategoryBlock({
       ) : null}
     </section>
   )
-}
-
-function plural(count: number, forms: [string, string, string] = ['трата', 'траты', 'трат']): string {
-  const n = Math.abs(count) % 100
-  const n1 = n % 10
-  if (n > 10 && n < 20) return forms[2]
-  if (n1 > 1 && n1 < 5) return forms[1]
-  if (n1 === 1) return forms[0]
-  return forms[2]
 }

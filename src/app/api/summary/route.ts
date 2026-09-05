@@ -6,6 +6,7 @@
  * перерисовывается целиком и не может показать несогласованные цифры.
  */
 import { NextResponse } from 'next/server'
+import { localeOf } from '@/lib/expenses'
 import { currentUser } from '@/lib/session'
 import { expensesInRange, summarize } from '@/lib/stats'
 import { dayKeyToInstant, rangeFor, type Period } from '@/lib/time'
@@ -53,6 +54,7 @@ export async function GET(request: Request) {
       timezone: user.timezone,
       baseCurrency: user.baseCurrency,
       firstExpenseAt: user.firstExpenseAt,
+      locale: localeOf(user),
     },
     period,
     at,

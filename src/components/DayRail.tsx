@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react'
 import { formatMoney } from '@/lib/money'
+import { MONTHS_SHORT, t, type Locale } from '@/lib/i18n'
 import type { DayTotal } from '@/lib/stats'
 
 /**
@@ -23,19 +24,15 @@ interface Props {
   todayKey: string
   selectedDay: string | null
   onSelectDay: (day: string | null) => void
+  locale: Locale
 }
 
-const MONTHS_SHORT = [
-  'янв', 'фев', 'мар', 'апр', 'мая', 'июн',
-  'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
-]
-
-function shortLabel(dayKey: string): string {
+function shortLabel(dayKey: string, locale: Locale): string {
   const [, month, day] = dayKey.split('-')
-  return `${Number(day)} ${MONTHS_SHORT[Number(month) - 1]}`
+  return `${Number(day)} ${MONTHS_SHORT[locale][Number(month) - 1]}`
 }
 
-export function DayRail({ days, currency, todayKey, selectedDay, onSelectDay }: Props) {
+export function DayRail({ days, currency, todayKey, selectedDay, onSelectDay, locale }: Props) {
   const { max, average, maxDay } = useMemo(() => {
     const values = days.map((d) => d.totalMinor)
     const peak = Math.max(0, ...values)
@@ -61,11 +58,14 @@ export function DayRail({ days, currency, todayKey, selectedDay, onSelectDay }: 
   return (
     <section className="px-4 pb-5 pt-4">
       <header className="mb-3 flex items-baseline justify-between">
-        <h2 className="text-[13px] font-medium text-[var(--text-2)]">По дням</h2>
+        <h2 className="text-[13px] font-medium text-[var(--text-2)]">{t(locale, 'web.byDays')}</h2>
         {maxDay && maxDay.totalMinor > 0 ? (
           // Эта строка заменяет собой ось Y: одно число вместо пяти подписей.
           <span className="num text-[12px] text-[var(--text-2)]">
-            макс. {formatMoney(maxDay.totalMinor, currency)} · {shortLabel(maxDay.day)}
+            {t(locale, 'web.max', {
+              amount: formatMoney(maxDay.totalMinor, currency),
+              day: shortLabel(maxDay.day, locale),
+            })}
           </span>
         ) : null}
       </header>
@@ -98,7 +98,7 @@ export function DayRail({ days, currency, todayKey, selectedDay, onSelectDay }: 
                 // пальцем не поймать.
                 className="group relative h-full min-w-[6px] max-w-[32px] flex-1 cursor-pointer"
                 style={{ touchAction: 'manipulation' }}
-                aria-label={`${shortLabel(day.day)}: ${formatMoney(day.totalMinor, currency)}`}
+                aria-label={`${shortLabel(day.day, locale)}: ${formatMoney(day.totalMinor, currency)}`}
                 aria-pressed={isSelected}
               >
                 {day.totalMinor > 0 ? (
@@ -127,17 +127,17 @@ export function DayRail({ days, currency, todayKey, selectedDay, onSelectDay }: 
             className="num pointer-events-none absolute right-0 -translate-y-1/2 bg-[var(--bg)] pl-1 text-[11px] text-[var(--text-3)]"
             style={{ bottom: `${Math.min(100, (average / scale) * 100)}%` }}
           >
-            ср. {formatMoney(Math.round(average), currency)}
+            {t(locale, 'web.average', { amount: formatMoney(Math.round(average), currency) })}
           </div>
         ) : null}
       </div>
 
       <div className="mt-2 flex justify-between text-[11px] text-[var(--text-3)]">
-        <span>{days.length > 0 ? shortLabel(days[0]!.day) : ''}</span>
+        <span>{days.length > 0 ? shortLabel(days[0]!.day, locale) : ''}</span>
         {days.length > 6 ? (
-          <span>{shortLabel(days[Math.floor(days.length / 2)]!.day)}</span>
+          <span>{shortLabel(days[Math.floor(days.length / 2)]!.day, locale)}</span>
         ) : null}
-        <span>{days.length > 1 ? shortLabel(days[days.length - 1]!.day) : ''}</span>
+        <span>{days.length > 1 ? shortLabel(days[days.length - 1]!.day, locale) : ''}</span>
       </div>
     </section>
   )
